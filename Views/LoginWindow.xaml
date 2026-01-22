@@ -1,0 +1,106 @@
+<Window x:Class="auto_chinhdo.Views.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Đăng nhập - Auto LDPlayer" 
+        Height="500" Width="450"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="#1E1E2E">
+    
+    <Grid>
+        <Border Background="#2D2D44" 
+                CornerRadius="15" 
+                Margin="20"
+                Padding="30">
+            <StackPanel VerticalAlignment="Center">
+                <!-- Logo/Title -->
+                <TextBlock Text="🎮 Auto LDPlayer" 
+                           FontSize="32" 
+                           FontWeight="Bold" 
+                           Foreground="#7C3AED"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,5"/>
+                
+                <TextBlock Text="Đăng nhập để tiếp tục" 
+                           FontSize="14" 
+                           Foreground="#A0A0B0"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,25"/>
+                
+                <!-- Email / UserID -->
+                <TextBlock Text="Email / UserID" 
+                           Foreground="#CCCCCC" 
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="TxtEmail" 
+                         Height="45" 
+                         FontSize="15"
+                         Padding="12,10"
+                         Background="#3D3D5C"
+                         Foreground="White"
+                         BorderBrush="#5D5D7C"
+                         BorderThickness="1"
+                         VerticalContentAlignment="Center"/>
+                
+                <!-- Password -->
+                <TextBlock Text="Mật khẩu" 
+                           Foreground="#CCCCCC" 
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Margin="0,20,0,8"/>
+                <PasswordBox x:Name="TxtPassword" 
+                             Height="45" 
+                             FontSize="15"
+                             Padding="12,10"
+                             Background="#3D3D5C"
+                             Foreground="White"
+                             BorderBrush="#5D5D7C"
+                             BorderThickness="1"
+                             VerticalContentAlignment="Center"/>
+                
+                <!-- Remember me -->
+                <CheckBox x:Name="ChkRemember" 
+                          Content="Ghi nhớ đăng nhập" 
+                          Foreground="#A0A0B0"
+                          FontSize="13"
+                          Margin="0,15,0,0"/>
+                
+                <!-- Error message -->
+                <Border x:Name="ErrorBorder" 
+                        Background="#3D2020" 
+                        CornerRadius="5" 
+                        Padding="10" 
+                        Margin="0,15,0,0"
+                        Visibility="Collapsed">
+                    <TextBlock x:Name="TxtError" 
+                               Foreground="#EF4444" 
+                               FontSize="13"
+                               TextWrapping="Wrap"/>
+                </Border>
+                
+                <!-- Login Button -->
+                <Button x:Name="BtnLogin" 
+                        Content="🔐 ĐĂNG NHẬP" 
+                        Height="50"
+                        FontSize="16"
+                        FontWeight="Bold"
+                        Background="#7C3AED"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Margin="0,25,0,0"
+                        Click="BtnLogin_Click"/>
+                
+                <!-- Loading -->
+                <TextBlock x:Name="TxtLoading" 
+                           Text="⏳ Đang đăng nhập..." 
+                           Foreground="#7C3AED"
+                           FontSize="14"
+                           HorizontalAlignment="Center"
+                           Margin="0,15,0,0"
+                           Visibility="Collapsed"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

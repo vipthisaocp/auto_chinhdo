@@ -1,0 +1,401 @@
+﻿<Window x:Class="AdminPanel.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="🔐 Admin Control Panel - Quản lý License Auto LDPlayer" 
+        Height="720" Width="1200"
+        WindowStartupLocation="CenterScreen"
+        Background="#0a0e27">
+    
+    <Window.Resources>
+        <!-- Menu Button Style -->
+        <Style x:Key="MenuButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#B4B4C8"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Padding" Value="15,12"/>
+            <Setter Property="Margin" Value="0,4"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="8" 
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#1e2749"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        
+        <!-- DataGrid Header Style -->
+        <Style x:Key="DataGridHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#1a1f3a"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+    </Window.Resources>
+    
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="240"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        
+        <!-- Sidebar -->
+        <Border Grid.Column="0" Background="#0f1429" Padding="20" BorderBrush="#1a1f3a" BorderThickness="0,0,1,0">
+            <StackPanel>
+                <TextBlock Text="🔐 Admin Panel" 
+                           FontSize="24" 
+                           FontWeight="Bold" 
+                           Foreground="#6366f1"
+                           Margin="0,10,0,10"/>
+                
+                <TextBlock Text="Quản lý License" 
+                           FontSize="12" 
+                           Foreground="#6b7280"
+                           Margin="0,0,0,30"/>
+                
+                <Button x:Name="BtnDashboard" Content="📊  Tổng quan" 
+                        Style="{StaticResource MenuButton}"
+                        Click="BtnDashboard_Click"/>
+                
+                <Button x:Name="BtnUsers" Content="👥  Quản lý Users" 
+                        Style="{StaticResource MenuButton}"
+                        Click="BtnUsers_Click"/>
+                
+                <Button x:Name="BtnLicenses" Content="📋  Quản lý Licenses" 
+                        Style="{StaticResource MenuButton}"
+                        Click="BtnLicenses_Click"/>
+                
+                <Button x:Name="BtnDevices" Content="📱  Thiết bị đang dùng" 
+                        Style="{StaticResource MenuButton}"
+                        Click="BtnDevices_Click"/>
+                
+                <Button x:Name="BtnRelease" Content="🚀  Phát hành Update" 
+                        Style="{StaticResource MenuButton}"
+                        Click="BtnRelease_Click"/>
+                
+                <Separator Margin="0,25,0,15" Background="#1a1f3a"/>
+                
+                <Button x:Name="BtnRefresh" Content="🔄  Làm mới dữ liệu" 
+                        Style="{StaticResource MenuButton}"
+                        Click="BtnRefresh_Click"/>
+            </StackPanel>
+        </Border>
+        
+        <!-- Main Content -->
+        <Border Grid.Column="1" Padding="30" Background="#0a0e27">
+            <Grid>
+                <!-- Dashboard View -->
+                <StackPanel x:Name="DashboardView" Visibility="Visible">
+                    <TextBlock Text="📊 Tổng quan hệ thống" FontSize="28" FontWeight="Bold" Foreground="White" Margin="0,0,0,25"/>
+                    
+                    <WrapPanel>
+                        <!-- Total Users Card -->
+                        <Border Background="#1e293b" CornerRadius="12" Padding="25" Margin="0,0,20,20" Width="220">
+                            <StackPanel>
+                                <TextBlock Text="👥 Tổng số Users" Foreground="#94a3b8" FontSize="13" FontWeight="Medium"/>
+                                <TextBlock x:Name="TxtTotalUsers" Text="0" Foreground="#e2e8f0" FontSize="40" FontWeight="Bold" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Active Licenses Card -->
+                        <Border Background="#14532d" CornerRadius="12" Padding="25" Margin="0,0,20,20" Width="220">
+                            <StackPanel>
+                                <TextBlock Text="✅ License đang hoạt động" Foreground="#86efac" FontSize="13" FontWeight="Medium"/>
+                                <TextBlock x:Name="TxtActiveLicenses" Text="0" Foreground="#4ade80" FontSize="40" FontWeight="Bold" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Expiring Soon Card -->
+                        <Border Background="#451a03" CornerRadius="12" Padding="25" Margin="0,0,20,20" Width="220">
+                            <StackPanel>
+                                <TextBlock Text="⚠️ Sắp hết hạn (7 ngày)" Foreground="#fde047" FontSize="13" FontWeight="Medium"/>
+                                <TextBlock x:Name="TxtExpiringSoon" Text="0" Foreground="#fbbf24" FontSize="40" FontWeight="Bold" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </WrapPanel>
+                </StackPanel>
+                
+                <!-- Users View -->
+                <Grid x:Name="UsersView" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    
+                    <StackPanel Grid.Row="0" Margin="0,0,0,25">
+                        <TextBlock Text="👥 Quản lý người dùng" FontSize="28" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+                        <TextBlock Text="Tạo mới, chỉnh sửa và quản lý tài khoản người dùng" Foreground="#94a3b8" FontSize="13"/>
+                    </StackPanel>
+                    
+                    <!-- Add User Form -->
+                    <Border Grid.Row="1" Background="#1e293b" CornerRadius="12" Padding="20" Margin="0,0,0,20">
+                        <StackPanel>
+                            <TextBlock Text="➕ Thêm User mới" FontSize="16" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,15"/>
+                            
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                
+                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                    <TextBlock Text="Email / Username *" Foreground="#94a3b8" FontSize="12" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="TxtNewEmail" Height="40"
+                                             Background="#0f172a" Foreground="White" 
+                                             BorderBrush="#334155" BorderThickness="1"
+                                             Padding="12,8" FontSize="13"
+                                             ToolTip="Email hoặc tên đăng nhập duy nhất"/>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                    <TextBlock Text="Mật khẩu *" Foreground="#94a3b8" FontSize="12" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="TxtNewPassword" Height="40"
+                                             Background="#0f172a" Foreground="White" 
+                                             BorderBrush="#334155" BorderThickness="1"
+                                             Padding="12,8" FontSize="13"
+                                             ToolTip="Mật khẩu đăng nhập"/>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Column="2" Margin="0,0,12,0">
+                                    <TextBlock Text="Tên hiển thị" Foreground="#94a3b8" FontSize="12" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="TxtNewDisplayName" Height="40"
+                                             Background="#0f172a" Foreground="White" 
+                                             BorderBrush="#334155" BorderThickness="1"
+                                             Padding="12,8" FontSize="13"
+                                             ToolTip="Tên hiển thị (tùy chọn)"/>
+                                </StackPanel>
+                                
+                                <Button Grid.Column="3" Content="✅ Thêm User" Height="40" Padding="20,0" 
+                                        Background="#6366f1" Foreground="White" BorderThickness="0"
+                                        FontWeight="SemiBold" VerticalAlignment="Bottom"
+                                        Click="BtnAddUser_Click"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Users List -->
+                    <DataGrid Grid.Row="2" x:Name="UsersGrid" AutoGenerateColumns="False"
+                              Background="#1e293b" Foreground="White" BorderThickness="0"
+                              RowBackground="#1e293b" AlternatingRowBackground="#0f172a"
+                              GridLinesVisibility="None" 
+                              ColumnHeaderStyle="{StaticResource DataGridHeaderStyle}"
+                              RowHeight="45">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="📧 Email" Binding="{Binding Email}" Width="*" MinWidth="200"/>
+                            <DataGridTextColumn Header="👤 Tên hiển thị" Binding="{Binding DisplayName}" Width="*" MinWidth="180"/>
+                            <DataGridTextColumn Header="📅 Ngày tạo" Binding="{Binding CreatedAt, StringFormat=dd/MM/yyyy HH:mm}" Width="150"/>
+                            <DataGridTemplateColumn Header="⚙️ Hành động" Width="120">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="🗑️ Xóa" Background="#dc2626" Foreground="White" 
+                                                BorderThickness="0" Padding="12,6" FontSize="12"
+                                                Click="BtnDeleteUser_Click"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+                
+                <!-- Licenses View -->
+                <Grid x:Name="LicensesView" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    
+                    <StackPanel Grid.Row="0" Margin="0,0,0,25">
+                        <TextBlock Text="📋 Quản lý License" FontSize="28" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+                        <TextBlock Text="Tạo mới, gia hạn và quản lý license cho người dùng" Foreground="#94a3b8" FontSize="13"/>
+                    </StackPanel>
+                    
+                    <!-- Add License Form -->
+                    <Border Grid.Row="1" Background="#1e293b" CornerRadius="12" Padding="20" Margin="0,0,0,20">
+                        <StackPanel>
+                            <TextBlock Text="➕ Tạo License mới" FontSize="16" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,15"/>
+                            
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                
+                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                    <TextBlock Text="Email người dùng *" Foreground="#94a3b8" FontSize="12" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="TxtLicenseEmail" Height="40"
+                                             Background="#0f172a" Foreground="White" 
+                                             BorderBrush="#334155" BorderThickness="1"
+                                             Padding="12,8" FontSize="13"
+                                             ToolTip="Email/Username của user cần cấp license"/>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                    <TextBlock Text="Số ngày *" Foreground="#94a3b8" FontSize="12" Margin="0,0,0,6"/>
+                                    <TextBox x:Name="TxtLicenseDays" Height="40" Text="30"
+                                             Background="#0f172a" Foreground="White" 
+                                             BorderBrush="#334155" BorderThickness="1"
+                                             Padding="12,8" FontSize="13"
+                                             ToolTip="Thời hạn license (số ngày)"/>
+                                </StackPanel>
+                                
+                                <Button Grid.Column="2" Content="✅ Tạo License" Height="40" Padding="20,0" 
+                                        Background="#22c55e" Foreground="White" BorderThickness="0"
+                                        FontWeight="SemiBold" VerticalAlignment="Bottom"
+                                        Click="BtnAddLicense_Click"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Licenses List -->
+                    <DataGrid Grid.Row="2" x:Name="LicensesGrid" AutoGenerateColumns="False"
+                              Background="#1e293b" Foreground="White" BorderThickness="0"
+                              RowBackground="#1e293b" AlternatingRowBackground="#0f172a"
+                              GridLinesVisibility="None"
+                              ColumnHeaderStyle="{StaticResource DataGridHeaderStyle}"
+                              RowHeight="45">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="📧 Email" Binding="{Binding UserId}" Width="*" MinWidth="200"/>
+                            <DataGridTextColumn Header="📅 Bắt đầu" Binding="{Binding StartDate, StringFormat=dd/MM/yyyy}" Width="110"/>
+                            <DataGridTextColumn Header="⏰ Hết hạn" Binding="{Binding EndDate, StringFormat=dd/MM/yyyy}" Width="110"/>
+                            <DataGridTextColumn Header="⏳ Còn lại" Binding="{Binding RemainingDays}" Width="90"/>
+                            <DataGridTextColumn Header="📊 Trạng thái" Binding="{Binding Status}" Width="120"/>
+                            <DataGridTemplateColumn Header="⚙️ Hành động" Width="200">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="➕ +30 ngày" Background="#3b82f6" Foreground="White" 
+                                                    BorderThickness="0" Padding="10,6" Margin="0,0,6,0" FontSize="12"
+                                                    Click="BtnExtendLicense_Click"/>
+                                            <Button Content="❌ Vô hiệu" Background="#dc2626" Foreground="White" 
+                                                    BorderThickness="0" Padding="10,6" FontSize="12"
+                                                    Click="BtnDeactivateLicense_Click"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+                
+                <!-- Devices View - NEW -->
+                <Grid x:Name="DevicesView" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    
+                    <StackPanel Grid.Row="0" Margin="0,0,0,25">
+                        <TextBlock Text="📱 Thiết bị đang hoạt động" FontSize="28" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+                        <TextBlock Text="Xem và quản lý tất cả thiết bị đang sử dụng license" Foreground="#94a3b8" FontSize="13"/>
+                    </StackPanel>
+                    
+                    <!-- Action Buttons -->
+                    <Border Grid.Row="1" Background="#1e293b" CornerRadius="12" Padding="20" Margin="0,0,0,20">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="🔄 Làm mới" Padding="15,10" 
+                                    Background="#3b82f6" Foreground="White" BorderThickness="0"
+                                    FontWeight="SemiBold" Margin="0,0,15,0"
+                                    Click="BtnRefreshDevices_Click"/>
+                            <Button Content="🗑️ Dọn dẹp device cũ (>7 ngày)" Padding="15,10" 
+                                    Background="#f59e0b" Foreground="White" BorderThickness="0"
+                                    FontWeight="SemiBold" Margin="0,0,15,0"
+                                    Click="BtnCleanupDevices_Click"/>
+                            <TextBlock x:Name="TxtDeviceStats" VerticalAlignment="Center" Foreground="#94a3b8" FontSize="13"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Devices List -->
+                    <DataGrid Grid.Row="2" x:Name="DevicesGrid" AutoGenerateColumns="False"
+                              Background="#1e293b" Foreground="White" BorderThickness="0"
+                              RowBackground="#1e293b" AlternatingRowBackground="#0f172a"
+                              GridLinesVisibility="None"
+                              ColumnHeaderStyle="{StaticResource DataGridHeaderStyle}"
+                              RowHeight="45">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="👤 User/License" Binding="{Binding LicenseId}" Width="*" MinWidth="180"/>
+                            <DataGridTextColumn Header="💻 Tên máy" Binding="{Binding DeviceName}" Width="150"/>
+                            <DataGridTextColumn Header="🔑 HWID" Binding="{Binding Hwid}" Width="120"/>
+                            <DataGridTemplateColumn Header="📊 Trạng thái" Width="120">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0">
+                                            <Ellipse Width="10" Height="10" Fill="{Binding StatusBrush}" Margin="0,0,8,0">
+                                                <Ellipse.Effect>
+                                                    <DropShadowEffect Color="{Binding StatusBrush}" BlurRadius="8" ShadowDepth="0" Opacity="0.5"/>
+                                                </Ellipse.Effect>
+                                            </Ellipse>
+                                            <TextBlock Text="{Binding StatusEmoji}" Margin="0,0,5,0" FontSize="14" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding StatusText}" Foreground="White" VerticalAlignment="Center" FontSize="13"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="⏰ Hoạt động" Binding="{Binding InactiveTime}" Width="120"/>
+                            <DataGridTemplateColumn Header="⚙️ Hành động" Width="120">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="🗑️ Xóa" Background="#dc2626" Foreground="White" 
+                                                BorderThickness="0" Padding="12,6" FontSize="12"
+                                                Click="BtnRemoveDevice_Click"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+                
+                <!-- Release Update View - NEW -->
+                <Grid x:Name="ReleaseView" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="🚀 Phát hành phiên bản mới" FontSize="28" FontWeight="Bold" Foreground="White" Margin="0,0,0,8"/>
+                        <TextBlock Text="Cập nhật thông tin phiên bản để khách hàng tự động tải về" Foreground="#94a3b8" FontSize="13" Margin="0,0,0,25"/>
+                        
+                        <Border Background="#1e293b" CornerRadius="12" Padding="25">
+                            <StackPanel>
+                                <TextBlock Text="Phiên bản mới (VD: 1.0.1)" Foreground="White" Margin="0,0,0,8"/>
+                                <TextBox x:Name="TxtNewVersion" Height="40" Background="#0f172a" Foreground="White" BorderThickness="1" BorderBrush="#334155" Padding="10,8" Margin="0,0,0,20"/>
+                                
+                                <TextBlock Text="Link tải trực tiếp (.zip từ GDrive/Direct Link)" Foreground="White" Margin="0,0,0,8"/>
+                                <TextBox x:Name="TxtUpdateUrl" Height="40" Background="#0f172a" Foreground="White" BorderThickness="1" BorderBrush="#334155" Padding="10,8" Margin="0,0,0,20"/>
+                                
+                                <TextBlock Text="Ghi chú bản cập nhật" Foreground="White" Margin="0,0,0,8"/>
+                                <TextBox x:Name="TxtUpdateNotes" Height="100" TextWrapping="Wrap" AcceptsReturn="True" Background="#0f172a" Foreground="White" BorderThickness="1" BorderBrush="#334155" Padding="10,8" Margin="0,0,0,20"/>
+                                
+                                <CheckBox x:Name="ChkIsCritical" Content="Bắt buộc cập nhật (Bản vá lỗi nghiêm trọng)" Foreground="White" Margin="0,0,0,25"/>
+                                
+                                <Button Content="🚀 PHÁT HÀNH NGAY" Height="50" Background="#3b82f6" Foreground="White" FontWeight="Bold" BorderThickness="0" Click="BtnPublish_Click">
+                                    <Button.Resources>
+                                        <Style TargetType="Border">
+                                            <Setter Property="CornerRadius" Value="8"/>
+                                        </Style>
+                                    </Button.Resources>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

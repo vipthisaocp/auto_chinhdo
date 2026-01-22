@@ -1,0 +1,207 @@
+<Window x:Class="auto_chinhdo.Views.ScriptEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Script Editor - Tạo Kịch Bản Auto" 
+        Height="700" Width="1100"
+        Background="#F5F5F5"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Resources>
+        <!-- Card Style -->
+        <Style TargetType="Border" x:Key="CardStyle">
+            <Setter Property="BorderBrush" Value="#E0E0E0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect ShadowDepth="1" Color="#AAAAAA" Opacity="0.2" BlurRadius="4"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
+        <!-- Button Style -->
+        <Style TargetType="Button" x:Key="PrimaryBtn">
+            <Setter Property="Background" Value="#007ACC"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Margin" Value="4,0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#005A99"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        
+        <Style TargetType="Button" x:Key="RecordBtn" BasedOn="{StaticResource PrimaryBtn}">
+            <Setter Property="Background" Value="#D32F2F"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#B71C1C"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="Button" x:Key="SuccessBtn" BasedOn="{StaticResource PrimaryBtn}">
+            <Setter Property="Background" Value="#4CAF50"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#388E3C"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- HEADER: Script Info & Toolbar -->
+        <Border Grid.Row="0" Style="{StaticResource CardStyle}">
+            <DockPanel>
+                <!-- Script Name -->
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <TextBlock Text="📜 Tên kịch bản:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBox x:Name="ScriptNameBox" Width="200" Text="New Script" FontSize="14"/>
+                </StackPanel>
+
+                <!-- Toolbar -->
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                    <Button x:Name="BtnRecord" Content="🔴 Record" Style="{StaticResource RecordBtn}" Click="BtnRecord_Click"/>
+                    <Button x:Name="BtnAddStep" Content="➕ Thêm bước" Style="{StaticResource PrimaryBtn}" Click="BtnAddStep_Click"/>
+                    <Button x:Name="BtnDeleteStep" Content="🗑️ Xóa" Style="{StaticResource PrimaryBtn}" Click="BtnDeleteStep_Click"/>
+                    <Border Width="1" Background="#DDD" Margin="8,0"/>
+                    <Button x:Name="BtnMoveUp" Content="⬆️" Style="{StaticResource PrimaryBtn}" Click="BtnMoveUp_Click" ToolTip="Di chuyển lên"/>
+                    <Button x:Name="BtnMoveDown" Content="⬇️" Style="{StaticResource PrimaryBtn}" Click="BtnMoveDown_Click" ToolTip="Di chuyển xuống"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- MAIN CONTENT -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="350"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="350"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- LEFT: Steps List -->
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="📋 Danh sách các bước" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
+                    <ListView x:Name="StepsListView" 
+                              SelectionChanged="StepsListView_SelectionChanged"
+                              AllowDrop="True"
+                              PreviewMouseLeftButtonDown="StepsListView_PreviewMouseLeftButtonDown"
+                              Drop="StepsListView_Drop">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="#" Width="40" DisplayMemberBinding="{Binding StepNumber}"/>
+                                <GridViewColumn Header="Mô tả" Width="180" DisplayMemberBinding="{Binding Description}"/>
+                                <GridViewColumn Header="Action" Width="70" DisplayMemberBinding="{Binding Action}"/>
+                                <GridViewColumn Header="OnFail" Width="100" DisplayMemberBinding="{Binding OnFail}"/>
+                                <GridViewColumn Header="Timeout" Width="70" DisplayMemberBinding="{Binding TimeoutMs}"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </DockPanel>
+            </Border>
+
+            <!-- RIGHT: Step Details Editor -->
+            <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="StepDetailsPanel" IsEnabled="False">
+                        <TextBlock Text="⚙️ Chi tiết bước" FontSize="14" FontWeight="Bold" Margin="0,0,0,12"/>
+
+                        <!-- Description -->
+                        <TextBlock Text="Mô tả:" FontWeight="SemiBold"/>
+                        <TextBox x:Name="TxtDescription" Margin="0,4,0,12" TextChanged="StepDetail_Changed"/>
+
+                        <!-- Template Preview -->
+                        <TextBlock Text="Ảnh mẫu (Template):" FontWeight="SemiBold"/>
+                        <Border BorderBrush="#CCC" BorderThickness="1" Height="80" Margin="0,4,0,4" Background="#F9F9F9">
+                            <Image x:Name="TemplatePreview" Stretch="Uniform"/>
+                        </Border>
+                        <Button Content="📷 Chọn/Cắt ảnh mẫu..." Style="{StaticResource PrimaryBtn}" 
+                                HorizontalAlignment="Left" Click="BtnSelectTemplate_Click"/>
+
+                        <!-- Action Type -->
+                        <TextBlock Text="Hành động:" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                        <ComboBox x:Name="CmbAction" Margin="0,4,0,12" SelectionChanged="CmbAction_SelectionChanged">
+                            <ComboBoxItem Content="Tap" Tag="Tap"/>
+                            <ComboBoxItem Content="TapText (OCR)" Tag="TapText"/>
+                            <ComboBoxItem Content="DoubleTap" Tag="DoubleTap"/>
+                            <ComboBoxItem Content="Wait" Tag="Wait"/>
+                            <ComboBoxItem Content="Swipe" Tag="Swipe"/>
+                        </ComboBox>
+
+                        <!-- OCR Panel (visible when TapText) -->
+                        <StackPanel x:Name="OcrPanel" Visibility="Collapsed">
+                            <TextBlock Text="🔤 Text cần tìm (OCR):" FontWeight="SemiBold" Foreground="#9C27B0"/>
+                            <TextBox x:Name="TxtTextToFind" Margin="0,4,0,8" TextChanged="StepDetail_Changed"
+                                     ToolTip="Nhập text bạn muốn tìm trên màn hình game"
+                                     InputMethod.IsInputMethodEnabled="True"
+                                     xml:lang="vi-VN"
+                                     AcceptsReturn="False"/>
+                            <CheckBox x:Name="ChkExactMatch" Content="Match chính xác (phân biệt hoa thường)" 
+                                      Margin="0,0,0,12" Checked="StepDetail_Changed" Unchecked="StepDetail_Changed"/>
+                        </StackPanel>
+
+                        <!-- Timeout -->
+                        <TextBlock Text="Timeout (ms):" FontWeight="SemiBold"/>
+                        <TextBox x:Name="TxtTimeout" Margin="0,4,0,12" Text="5000" TextChanged="StepDetail_Changed"/>
+
+                        <!-- Delay After -->
+                        <TextBlock Text="Delay sau action (ms):" FontWeight="SemiBold"/>
+                        <TextBox x:Name="TxtDelayAfter" Margin="0,4,0,12" Text="1000" TextChanged="StepDetail_Changed"/>
+
+                        <!-- On Fail Behavior -->
+                        <TextBlock Text="Khi không tìm thấy ảnh:" FontWeight="SemiBold" Foreground="#D32F2F"/>
+                        <ComboBox x:Name="CmbOnFail" Margin="0,4,0,8" SelectionChanged="StepDetail_Changed">
+                            <ComboBoxItem Content="Stop - Dừng và log lỗi"/>
+                            <ComboBoxItem Content="RetryFromStart - Quay về bước 1"/>
+                            <ComboBoxItem Content="RetryCurrentStep - Thử lại bước này"/>
+                            <ComboBoxItem Content="SkipToNext - Bỏ qua, sang bước tiếp"/>
+                        </ComboBox>
+
+                        <!-- Retry Count (visible when RetryCurrentStep) -->
+                        <StackPanel x:Name="RetryPanel" Visibility="Collapsed">
+                            <TextBlock Text="Số lần thử lại:" FontWeight="SemiBold"/>
+                            <TextBox x:Name="TxtRetryCount" Margin="0,4,0,12" Text="3" TextChanged="StepDetail_Changed"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- FOOTER: Save/Cancel -->
+        <Border Grid.Row="4" Style="{StaticResource CardStyle}">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                    <Button Content="💾 Lưu kịch bản" Style="{StaticResource SuccessBtn}" Click="BtnSave_Click"/>
+                    <Button Content="Hủy" Style="{StaticResource PrimaryBtn}" Click="BtnCancel_Click"/>
+                </StackPanel>
+                <TextBlock x:Name="StatusText" VerticalAlignment="Center" Foreground="#666" 
+                           Text="Chọn một bước để chỉnh sửa hoặc bấm Record để thêm bước mới"/>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

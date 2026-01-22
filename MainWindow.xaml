@@ -1,0 +1,323 @@
+﻿<Window x:Class="auto_chinhdo.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="LDPlayer Multi Auto Tool - v1.0.2" 
+        Height="776" Width="1400"
+        Background="#F5F5F5"
+        WindowStartupLocation="CenterScreen"
+        Icon="pack://application:,,,/app_icon.ico">
+
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="12, 6"/>
+            <Setter Property="Margin" Value="4, 0"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#007ACC"/>
+            <Setter Property="Background" Value="#007ACC"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#005A99"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#004070"/>
+                            </Trigger>
+                            <!-- Trigger for IsEnabled=False (Khi IsLicensed=False) -->
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#999999"/>
+                                <Setter Property="BorderBrush" Value="#666666"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="6, 4"/>
+            <Setter Property="BorderBrush" Value="#CCCCCC"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="MinWidth" Value="50"/>
+        </Style>
+
+        <Style TargetType="Border" x:Key="CardBorderStyle">
+            <Setter Property="BorderBrush" Value="#E0E0E0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect ShadowDepth="1" Color="#AAAAAA" Opacity="0.3" BlurRadius="5"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="GridViewColumnHeader">
+            <Setter Property="Background" Value="#EBEBEB"/>
+            <Setter Property="Foreground" Value="#333333"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Padding" Value="4, 6"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+            <Setter Property="BorderBrush" Value="#DDDDDD"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="Auto"/>
+            <!-- Status Bar mới / Control Bar -->
+        </Grid.RowDefinitions>
+
+        <!-- HEADER/CONTROL BAR (Grid.Row 0) -->
+        <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}" Padding="15 10">
+            <DockPanel LastChildFill="False">
+
+                <!-- KHU VỰC 1: CẤU HÌNH ADB VÀ REFRESH -->
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <!-- ADB Path -->
+                    <TextBlock VerticalAlignment="Center" Text="Đường dẫn ADB:" FontWeight="Bold" Margin="0,0,8,0"/>
+                    <TextBox x:Name="AdbPathBox" Width="180" Text="C:\LDPlayer\LDPlayer9\adb.exe"/>
+                    <Button Content="..." Width="30" Click="BrowseAdb_Click" Padding="0, 6"/>
+                    <Button Content="Refresh" Click="RefreshDevices_Click" 
+                            Background="#4CAF50" BorderBrush="#388E3C" Margin="8,0,0,0"/>
+
+                    <Border Width="1" Background="#DDDDDD" Margin="12, 0"/>
+
+                    <!-- CÁC NÚT CHỨC NĂNG: Chụp, Cắt ảnh, So khớp, Tap -->
+                    <Button Content="📷 Chụp" Click="Capture_Click" Padding="8, 6"
+                            Background="#2196F3" BorderBrush="#1976D2"/>
+                    <Button Content="✂️ Cắt ảnh" Click="Crop_Click" Padding="8, 6"
+                            Background="#00BCD4" BorderBrush="#0097A7"/>
+                    <Button Content="🔍 So khớp" Click="Match_Click" Padding="8, 6"
+                            Background="#9C27B0" BorderBrush="#7B1FA2"/>
+                    <Button Content="👆 Tap" Click="Tap_Click" Padding="8, 6"
+                            Background="#E91E63" BorderBrush="#C2185B"/>
+
+                    <Border Width="1" Background="#DDDDDD" Margin="8, 0"/>
+
+                    <!-- CÁC NÚT MẪu/Script -->
+                    <Button Content="🖼️ Chọn mẫu" Click="PickTemplate_Click" Padding="8, 6"
+                            Background="#795548" BorderBrush="#5D4037"/>
+                    <Button Content="🔍 OCR" Click="BtnOcrDebug_Click" Padding="8, 6"
+                            Background="#607D8B" BorderBrush="#455A64"
+                            ToolTip="Đọc tất cả text trên màn hình (debug OCR)"/>
+                    <Button Content="📜 Chạy Script" Click="BtnRunScript_Click" Padding="8, 6"
+                            Background="#FF5722" BorderBrush="#E64A19"/>
+                    <Button Content="✏️ Tạo Script" Click="BtnOpenScriptEditor_Click" Padding="8, 6"
+                            Background="#673AB7" BorderBrush="#512DA8"
+                            ToolTip="Mở trình soạn thảo kịch bản trực quan"/>
+                    <ComboBox x:Name="TargetTypeConfigBox" Width="100" VerticalAlignment="Center" Margin="8,0,0,0">
+                        <ComboBoxItem Content="👤 Player" IsSelected="True" Tag="player"/>
+                        <ComboBoxItem Content="👹 Boss" Tag="boss"/>
+                    </ComboBox>
+                    <Button Content="❤️ HP Bar" Click="BtnConfigHpBar_Click" Padding="8, 6"
+                            Background="#F44336" BorderBrush="#D32F2F"
+                            ToolTip="Cấu hình vùng nhận diện thanh máu cho loại mục tiêu đã chọn"/>
+                </StackPanel>
+                
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="580"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+
+            <!-- CỘT TRÁI: DANH SÁCH THIẾT BỊ -->
+            <Border Grid.Column="0" Style="{StaticResource CardBorderStyle}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Thiết bị (tick để bật auto)" 
+                               FontSize="15" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,10"/>
+
+                    <ListView x:Name="DevicesList" SelectionMode="Extended" DockPanel.Dock="Top" BorderThickness="0">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Width="40">
+                                    <GridViewColumnHeader Content="✔"/>
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" HorizontalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+
+                                <GridViewColumn Header="Title" Width="100" DisplayMemberBinding="{Binding Title}"/>
+                                <GridViewColumn Header="Serial" Width="100" DisplayMemberBinding="{Binding Serial}"/>
+                                <GridViewColumn Header="Size" Width="60" DisplayMemberBinding="{Binding SizeText}"/>
+
+                                <GridViewColumn Header="Timeout(ms)" Width="75">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBox Text="{Binding AppearTimeoutMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                                     TextAlignment="Center"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+
+                                <GridViewColumn Header="DelayTap(ms)" Width="75">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBox Text="{Binding WaitAfterAppearMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     TextAlignment="Center"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+
+                                <!-- CỘT CHẾ ĐỘ AUTO RIÊNG CHO TỪNG DEVICE -->
+                                <GridViewColumn Header="Chế độ" Width="90">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ComboBox SelectedIndex="{Binding SelectedAutoMode, Mode=TwoWay}"
+                                                      Width="80" HorizontalAlignment="Center">
+                                                <ComboBoxItem Content="📋 Auto" Tag="0"/>
+                                                <ComboBoxItem Content="⚔️ PK" Tag="1"/>
+                                                <ComboBoxItem Content="🔥 Hybrid" Tag="2"/>
+                                            </ComboBox>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+
+                    <!-- LƯU Ý: Phần Cấu hình Auto Chung đã bị XÓA khỏi đây -->
+
+                </DockPanel>
+            </Border>
+
+            <!-- CỘT PHẢI: SCREEN/TEMPLATE/LOGS -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="3*"/>
+                    <RowDefinition Height="10"/>
+                    <RowDefinition Height="2*"/>
+                    <RowDefinition Height="10"/>
+                    <RowDefinition Height="2*"/>
+                </Grid.RowDefinitions>
+
+                <!-- SCREEN -->
+                <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="SCREEN (Ảnh chụp màn hình)" 
+                                   FontSize="15" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                            <Image x:Name="ScreenImage" Stretch="UniformToFill"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+
+                <!-- TEMPLATE -->
+                <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="TEMPLATE (Ảnh mẫu)" 
+                                   FontSize="15" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,8"/>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                            <Image x:Name="TemplateImage" Stretch="UniformToFill"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+
+                <!-- DEBUG LOG BOX -->
+                <Border Grid.Row="4" Style="{StaticResource CardBorderStyle}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="DEBUG LOG" 
+                                   FontSize="13" FontWeight="Bold" Foreground="#333333" Margin="0,0,0,4"/>
+                        <TextBox x:Name="DebugLogBox" 
+                                 FontFamily="Consolas" FontSize="10" 
+                                 VerticalScrollBarVisibility="Auto" 
+                                 IsReadOnly="True" 
+                                 TextWrapping="Wrap"
+                                 Background="#F5F5F5"
+                                 AcceptsReturn="True"
+                                 BorderThickness="0"/>
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- FOOTER/CONTROL BAR MỚI (Grid.Row 4) -->
+        <Border Grid.Row="4" BorderThickness="0, 1, 0, 0" BorderBrush="#E0E0E0" Padding="15, 8" Background="#FAFAFA" Margin="0,10,0,-14">
+            <DockPanel Margin="0,35,0,-8">
+
+                <!-- BỔ SUNG: StackPanel chứa cả hai TextBlock và căn đều/thu gọn -->
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" Height="27" Width="752">
+
+                    <!-- 1. Trạng thái chung (StatusText) -->
+                    <TextBlock x:Name="StatusText" VerticalAlignment="Center" Text="Sẵn sàng" Foreground="#666666" Margin="0,0,16,0"/>
+
+
+
+                    <!-- BỔ SUNG: Biên giới giữa Status/License và Cấu hình Auto -->
+                    <Border Width="1" Background="#DDDDDD" Margin="16, 0"/>
+
+
+
+                </StackPanel>
+
+
+            </DockPanel>
+        </Border>
+        <Border Grid.Row="5" BorderThickness="0, 1, 0, 0" BorderBrush="#E0E0E0" Padding="15, 8" Background="#FAFAFA" Margin="0,0,0,69">
+            <DockPanel>
+
+                <!-- BỔ SUNG: StackPanel chứa cả hai TextBlock và căn đều/thu gọn -->
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+
+
+
+
+
+                    <!-- BỔ SUNG: Biên giới giữa Status/License và Cấu hình Auto -->
+                    <Border Width="1" Background="#DDDDDD" Margin="16, 0"/>
+
+                    <!-- CẤU HÌNH AUTO CHUNG (ĐÃ CHUYỂN XUỐNG ĐÂY) -->
+                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="16, 0, 0, 0">
+                        <TextBlock Text="Threshold:" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                        <TextBox x:Name="ThresholdBox" Width="60" Margin="4, 0"/>
+
+                        <TextBlock Text="Poll(ms):" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="SemiBold"/>
+                        <TextBox x:Name="PollBox" Width="60" Margin="4, 0"/>
+
+                        <TextBlock Text="Cooldown(ms):" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="SemiBold"/>
+                        <TextBox x:Name="CooldownBox" Width="80" Margin="4, 0"/>
+                    </StackPanel>
+
+                </StackPanel>
+
+                <!-- KHU VỰC NÚT ĐIỀU KHIỂN (DockPanel.Dock="Right") -->
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <!-- HƯỚNG DẪN: Chế độ chọn trong danh sách devices -->
+                    <TextBlock VerticalAlignment="Center" Margin="4,0"
+                               FontStyle="Italic" Foreground="#666666"
+                               Text="💡 Chọn chế độ Auto/PK/Hybrid cho từng LDPlayer trong danh sách bên trái"/>
+
+                    <Border Width="1" Background="#DDDDDD" Margin="8, 0"/>
+
+                    <Button Content="Start Auto" x:Name="StartAutoButton" Click="StartAuto_Click" 
+                    Background="#FF9800" BorderBrush="#F57C00" Margin="4,0,0,0"/>
+                    <Button Content="Stop Auto" Click="StopAuto_Click" 
+                    Background="#F44336" BorderBrush="#D32F2F"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

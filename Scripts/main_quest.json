@@ -1,0 +1,40 @@
+{
+  "Name": "Nhiệm vụ Chính Tuyến (Demo)",
+  "Author": "AutoBot",
+  "Descriptoin": "Tự động chạy nhiệm vụ chính tuyến cơ bản",
+  "Version": 1,
+  "Steps": [
+    {
+      "Id": "step_find_quest",
+      "Description": "Tìm thanh nhiệm vụ bên trái",
+      "TemplateName": "quest_tracker.png",
+      "Threshold": 0.85,
+      "TimeoutMs": 3000,
+      "Action": "Tap",
+      "DelayAfterMs": 2000,
+      "NextStepId": "step_check_dialog",
+      "OnFailStepId": "step_find_npc"
+    },
+    {
+      "Id": "step_check_dialog",
+      "Description": "Kiểm tra nếu có hội thoại NPC",
+      "TemplateName": "dialog_next_btn.png",
+      "Threshold": 0.9,
+      "TimeoutMs": 2000,
+      "Action": "Tap",
+      "DelayAfterMs": 500,
+      "NextStepId": "step_check_dialog",
+      "OnFailStepId": "step_find_quest",
+      "RetryCount": 3
+    },
+    {
+      "Id": "step_find_npc",
+      "Description": "Tìm NPC giao nhiệm vụ (dự phòng)",
+      "TemplateName": "npc_head_icon.png",
+      "Threshold": 0.8,
+      "Action": "Tap",
+      "DelayAfterMs": 1000,
+      "OnFailStepId": null
+    }
+  ]
+}
