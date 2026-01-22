@@ -1,0 +1,74 @@
+<Window x:Class="auto_chinhdo.Views.CropWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Cắt template (kéo chuột để chọn, Ctrl+S để lưu)" 
+        Height="700" Width="1000"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F5F5">
+    
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="12, 6"/>
+            <Setter Property="Margin" Value="4, 0"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#007ACC"/>
+            <Setter Property="Background" Value="#007ACC"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#005A99"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#004070"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- Top Toolbar -->
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" 
+                    Margin="8" HorizontalAlignment="Left">
+            <Button x:Name="BtnSave" Content="💾 Lưu (Ctrl+S)" Click="BtnSave_Click" 
+                    Margin="0,0,8,0" Padding="10,6"/>
+            <Button x:Name="BtnCancel" Content="❌ Hủy (Esc)" Click="BtnCancel_Click" 
+                    Padding="10,6" Background="#F44336" BorderBrush="#D32F2F"/>
+            
+            <Border Width="1" Background="#DDDDDD" Margin="16, 0"/>
+            
+            <CheckBox x:Name="ChkExtractText" Content="✂️ Tách nền (chỉ giữ chữ)" 
+                      VerticalAlignment="Center" Margin="8,0" FontWeight="SemiBold"
+                      ToolTip="Tự động xóa nền, chỉ giữ lại phần chữ/icon (lưu PNG trong suốt)"/>
+            
+            <Border Width="1" Background="#DDDDDD" Margin="8, 0"/>
+            
+            <TextBlock VerticalAlignment="Center" Margin="8,0" Foreground="#666">
+                Kéo chuột để chọn vùng cắt
+            </TextBlock>
+        </StackPanel>
+        
+        <!-- Main Content -->
+        <Grid>
+            <Image x:Name="SourceImage" Stretch="Uniform"/>
+            <Canvas x:Name="OverlayCanvas" Background="Transparent">
+                <Rectangle x:Name="SelectionRect" 
+                           Stroke="Lime" StrokeThickness="2"
+                           Fill="#4AA0FF40" Visibility="Collapsed"/>
+            </Canvas>
+        </Grid>
+    </DockPanel>
+</Window>

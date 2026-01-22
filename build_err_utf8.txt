@@ -1,0 +1,6 @@
+MSBUILD : error MSB1008: Only one project can be specified.
+    Full command line: 'C:\Program Files\dotnet\sdk\8.0.413\MSBuild.dll -maxcpucount -verbosity:m -nologo -restore -consoleloggerparameters:Summary c:\Users\PC\Desktop\auto chinh do2\auto chinh do\auto_chinhdo\auto_chinhdo.csproj -distributedlogger:Microsoft.DotNet.Tools.MSBuild.MSBuildLogger,C:\Program Files\dotnet\sdk\8.0.413\dotnet.dll*Microsoft.DotNet.Tools.MSBuild.MSBuildForwardingLogger,C:\Program Files\dotnet\sdk\8.0.413\dotnet.dll'
+  Switches appended by response files:
+Switch: chinh
+
+For switch syntax, type "MSBuild -help"

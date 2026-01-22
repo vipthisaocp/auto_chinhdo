@@ -1,0 +1,64 @@
+﻿dotnet : Unhandled 
+exception: System.Co
+mponentModel.Win32Ex
+ception (740): An 
+error occurred 
+trying to start 
+process 'C:\Users\PC
+\Desktop\auto chinh 
+do2\auto chinh do\au
+to_chinhdo\bin\Debug
+\net8.0-windows\auto
+_chinhdo.exe' with 
+working directory 'C
+:\Users\PC\Desktop\a
+uto chinh do2\auto 
+chinh 
+do\auto_chinhdo'. 
+The requested 
+operation requires 
+elevation.
+At line:1 char:1
++ dotnet run 
+--project .\auto_chi
+nhdo.csproj 2>&1 | 
+Out-File -FilePath  
+...
++ ~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~
+    + CategoryInfo  
+            : NotS  
+  pecified: (Unha   
+ ndled excep...i    
+res elevation.:    
+String) [], Rem    
+oteException
+    + FullyQualifie 
+   dErrorId : Nati  
+  veCommandError
+ 
+   at System.Diagnos
+tics.Process.StartWi
+thCreateProcess(Proc
+essStartInfo 
+startInfo)
+   at Microsoft.DotN
+et.Cli.Utils.Command
+.Execute(Action`1 
+processStarted)
+   at Microsoft.DotN
+et.Tools.Run.RunComm
+and.Execute()
+   at System.Command
+Line.Invocation.Invo
+cationPipeline.Invok
+e(ParseResult 
+parseResult)
+   at Microsoft.DotN
+et.Cli.Program.Proce
+ssArgs(String[] 
+args, TimeSpan 
+startupTime, 
+ITelemetry 
+telemetryClient)
