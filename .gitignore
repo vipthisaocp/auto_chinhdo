@@ -79,3 +79,8 @@ InstallerOutput/
 # Firebase credentials
 firebase-admin-key.json
 *.json
+# Build outputs
+bin/
+obj/
+# Installer output
+InstallerOutput/
