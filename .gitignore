@@ -75,3 +75,7 @@ screen_*.png
 # Gemini artifacts (nếu có)
 .gemini/
 InstallerOutput/
+
+# Firebase credentials
+firebase-admin-key.json
+*.json
