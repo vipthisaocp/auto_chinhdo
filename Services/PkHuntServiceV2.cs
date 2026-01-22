@@ -17,15 +17,19 @@ namespace auto_chinhdo.Services
     {
         #region Constants & ROI
         
-        // === ROI MỞ RỘNG cho 960x540 ===
-        // Bao gồm cả TÊN (phía trên) và THANH MÁU (phía dưới)
-        private static readonly Rect VITAL_SIGNS_ROI = new Rect(12, 135, 100, 40);
+        // === Fallback ROI nếu không có config (960x540) ===
+        private const int DEFAULT_HP_X = 12;
+        private const int DEFAULT_HP_Y = 158;
+        private const int DEFAULT_HP_WIDTH = 98;
+        private const int DEFAULT_HP_HEIGHT = 14;
+        private const int DEFAULT_TAP_X = 24;
+        private const int DEFAULT_TAP_Y = 137;
+        private const int DEFAULT_NO_ENEMY_TIMEOUT_MS = 5000;
         
-        // Vị trí tap khi phát hiện mục tiêu
-        private const int TARGET_TAP_X = 24;
-        private const int TARGET_TAP_Y = 137;
+        // === Mở rộng ROI lên trên để quét cả tên ===
+        private const int NAME_EXTEND_UP = 25; // Mở rộng lên 25px để bao gồm tên
         
-        // === Ngưỡng pixel tối thiểu (0.5% của 4000 pixels = 20 pixels) ===
+        // === Ngưỡng pixel tối thiểu (0.5% của vùng ROI) ===
         private const int MIN_PIXELS_THRESHOLD = 20;
         
         // === HSV Ranges cho các màu ===
@@ -55,9 +59,6 @@ namespace auto_chinhdo.Services
             "skill4.png", "skill5.png", "skill6.png"
         };
         
-        // Thời gian không thấy mục tiêu trước khi "Theo sau" (ms)
-        private const int NO_TARGET_TIMEOUT_MS = 5000;
-        
         #endregion
         
         #region Dependencies
@@ -67,6 +68,12 @@ namespace auto_chinhdo.Services
         private readonly Func<DeviceItem, Task> _captureScreen;
         private readonly Func<string> _getScreenPath;
         private readonly Action<DeviceData, int, int> _performTap;
+        
+        // Config values (đọc từ file hoặc dùng default)
+        private Rect _vitalSignsROI;
+        private int _tapX;
+        private int _tapY;
+        private int _noEnemyTimeoutMs;
         
         #endregion
         
@@ -87,6 +94,48 @@ namespace auto_chinhdo.Services
             _captureScreen = captureScreen;
             _getScreenPath = getScreenPath;
             _performTap = performTap;
+            
+            // Load config từ file
+            LoadConfigFromFile(sharedTemplateDir);
+        }
+        
+        /// <summary>
+        /// Load ROI và các thông số từ hp_bar_config.json
+        /// Mở rộng ROI lên trên để bao gồm cả tên
+        /// </summary>
+        private void LoadConfigFromFile(string templateDir)
+        {
+            try
+            {
+                var configService = new HealthBarConfigService(templateDir);
+                var config = configService.LoadConfig("player");
+                
+                if (config.IsValid)
+                {
+                    // Mở rộng ROI lên trên để bao gồm cả tên
+                    int extendedY = Math.Max(0, config.Y - NAME_EXTEND_UP);
+                    int extendedHeight = config.Height + NAME_EXTEND_UP;
+                    
+                    _vitalSignsROI = new Rect(config.X, extendedY, config.Width, extendedHeight);
+                    _tapX = config.TapX;
+                    _tapY = config.TapY;
+                    _noEnemyTimeoutMs = config.NoEnemyTimeoutMs > 0 ? config.NoEnemyTimeoutMs : DEFAULT_NO_ENEMY_TIMEOUT_MS;
+                    
+                    _log($"📁 [V2] Đã load config: ROI=({_vitalSignsROI.X},{_vitalSignsROI.Y},{_vitalSignsROI.Width},{_vitalSignsROI.Height}), Tap=({_tapX},{_tapY})");
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                _log($"⚠️ [V2] Không load được config: {ex.Message}. Dùng mặc định.");
+            }
+            
+            // Fallback to defaults
+            int defaultExtendedY = Math.Max(0, DEFAULT_HP_Y - NAME_EXTEND_UP);
+            _vitalSignsROI = new Rect(DEFAULT_HP_X, defaultExtendedY, DEFAULT_HP_WIDTH, DEFAULT_HP_HEIGHT + NAME_EXTEND_UP);
+            _tapX = DEFAULT_TAP_X;
+            _tapY = DEFAULT_TAP_Y;
+            _noEnemyTimeoutMs = DEFAULT_NO_ENEMY_TIMEOUT_MS;
         }
         
         #endregion
@@ -99,7 +148,7 @@ namespace auto_chinhdo.Services
         public async Task RunPkHuntLoopAsync(DeviceItem device, CancellationToken ct)
         {
             _log("⚔️ [V2] Bắt đầu PK Hunt V2 (Vital Signs Detection)...");
-            _log($"📐 ROI: ({VITAL_SIGNS_ROI.X},{VITAL_SIGNS_ROI.Y},{VITAL_SIGNS_ROI.Width},{VITAL_SIGNS_ROI.Height})");
+            _log($"📐 ROI: ({_vitalSignsROI.X},{_vitalSignsROI.Y},{_vitalSignsROI.Width},{_vitalSignsROI.Height})");
             
             // Lấy DeviceData một lần để tránh cast nhiều lần
             var deviceData = (DeviceData)device.Raw;
@@ -146,9 +195,9 @@ namespace auto_chinhdo.Services
                     // 3. Không thấy mục tiêu - kiểm tra timeout
                     var noTargetDuration = DateTime.Now - lastSeenTarget;
                     
-                    if (noTargetDuration.TotalMilliseconds >= NO_TARGET_TIMEOUT_MS)
+                    if (noTargetDuration.TotalMilliseconds >= _noEnemyTimeoutMs)
                     {
-                        _log($"👥 [V2] Không thấy mục tiêu {NO_TARGET_TIMEOUT_MS / 1000}s → Theo sau...");
+                        _log($"👥 [V2] Không thấy mục tiêu {_noEnemyTimeoutMs / 1000}s → Theo sau...");
                         
                         // Bấm "Theo sau"
                         await FollowLeader(screenPath, deviceData);
@@ -198,7 +247,7 @@ namespace auto_chinhdo.Services
                 if (img.Empty()) return (false, false, false);
                 
                 // Crop ROI
-                using var roi = new Mat(img, VITAL_SIGNS_ROI);
+                using var roi = new Mat(img, _vitalSignsROI);
                 
                 // Chuyển sang HSV
                 using var hsv = new Mat();
@@ -250,7 +299,7 @@ namespace auto_chinhdo.Services
         private async Task PerformPK(DeviceData device, string screenPath)
         {
             // 1. Tap vào mục tiêu
-            _performTap(device, TARGET_TAP_X, TARGET_TAP_Y);
+            _performTap(device, _tapX, _tapY);
             await Task.Delay(100);
             
             // 2. Xả skills
