@@ -48,6 +48,7 @@ namespace auto_chinhdo.Services
         private static readonly Scalar PURPLE_HIGH = new Scalar(170, 255, 255);
         
         // === Templates ===
+        private const string LANCAN = "lancan.png"; // Nút Lân cận để chuyển tab
         private const string THEOSAU = "theosau.png";
         private const string TRIEUTAP = "trieutap_tienden.png";
         private const double TEMPLATE_THRESHOLD = 0.70;
@@ -152,6 +153,9 @@ namespace auto_chinhdo.Services
             
             // Lấy DeviceData một lần để tránh cast nhiều lần
             var deviceData = (DeviceData)device.Raw;
+            
+            // KHỚI TẠO: Bấm nút "Lân cận" để đảm bảo đang ở tab người chơi
+            await InitializeTab(device, deviceData, ct);
             
             DateTime lastSeenTarget = DateTime.Now;
             int loopCount = 0;
@@ -364,6 +368,60 @@ namespace auto_chinhdo.Services
             {
                 _performTap(device, result.Value.center.X, result.Value.center.Y);
                 _log($"✅ [V2] Bấm 'Triệu tập' tại ({result.Value.center.X},{result.Value.center.Y})");
+            }
+        }
+        
+        
+        #endregion
+        
+        #region Initialization
+        
+        /// <summary>
+        /// Khởi tạo: Bấm nút "Lân cận" để đảm bảo đang ở tab người chơi
+        /// </summary>
+        private async Task InitializeTab(DeviceItem device, DeviceData deviceData, CancellationToken ct)
+        {
+            _log("🔄 [V2] Khởi tạo: Đang kiểm tra và chuyển sang tab Lân cận...");
+            
+            try
+            {
+                // Chụp màn hình
+                await _captureScreen(device);
+                var screenPath = _getScreenPath();
+                
+                if (string.IsNullOrEmpty(screenPath) || !File.Exists(screenPath))
+                {
+                    _log("⚠️ [V2] Không chụp được màn hình để khởi tạo");
+                    return;
+                }
+                
+                // Tìm và bấm nút "Lân cận"
+                var templatePath = Path.Combine(_sharedTemplateDir, LANCAN);
+                
+                if (!File.Exists(templatePath))
+                {
+                    _log($"⚠️ [V2] Không tìm thấy template: {LANCAN}");
+                    return;
+                }
+                
+                var result = OpenCvLogic.MatchAny(screenPath, new[] { templatePath }, TEMPLATE_THRESHOLD);
+                
+                if (result.HasValue)
+                {
+                    _performTap(deviceData, result.Value.center.X, result.Value.center.Y);
+                    _log($"✅ [V2] Bấm 'Lân cận' tại ({result.Value.center.X},{result.Value.center.Y})");
+                    
+                    // Chờ tab chuyển xong
+                    await Task.Delay(1000, ct);
+                }
+                else
+                {
+                    _log("ℹ️ [V2] Không thấy nút 'Lân cận' - có thể đã ở đúng tab");
+                }
+            }
+            catch (Exception ex)
+            {
+                _log($"⚠️ [V2] Lỗi khởi tạo tab: {ex.Message}");
             }
         }
         

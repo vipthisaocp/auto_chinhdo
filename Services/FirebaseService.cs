@@ -1,31 +1,44 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Management;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
-using FirebaseAdmin;
-using FirebaseAdmin.Auth;
-using Google.Apis.Auth.OAuth2;
-using Google.Cloud.Firestore;
 using auto_chinhdo.Models;
 
 namespace auto_chinhdo.Services
 {
     /// <summary>
     /// Service quản lý Firebase Authentication và License
+    /// Sử dụng hoàn toàn REST API - không cần firebase-admin-key.json
     /// </summary>
     public class FirebaseService
     {
         private static FirebaseService? _instance;
         private static readonly object _lock = new();
+        private static readonly HttpClient _httpClient = new HttpClient();
         
-        private FirebaseApp? _app;
-        private FirestoreDb? _db;
+        // === Firebase REST API Configuration ===
+        private const string FIREBASE_API_KEY = "AIzaSyAz0_o_MrC8X9dX9zARQdhAMAgPLdpbpX4";
+        private const string FIREBASE_PROJECT_ID = "autoldplayer-license";
+        
+        // Firebase Auth REST API
+        private const string AUTH_URL = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword";
+        
+        // Firestore REST API
+        private const string FIRESTORE_BASE_URL = "https://firestore.googleapis.com/v1/projects/{0}/databases/(default)/documents";
         
         // Thời gian cleanup device không hoạt động (7 ngày)
         private const int DEVICE_INACTIVE_DAYS = 7;
+        
+        // ID Token từ Firebase Auth (dùng để xác thực Firestore REST API)
+        private string? _idToken;
+        private DateTime _tokenExpiry;
         
         public bool IsInitialized { get; private set; }
         public string? CurrentUserId { get; private set; }
@@ -55,16 +68,15 @@ namespace auto_chinhdo.Services
             }
         }
         
-        private FirebaseService() { }
+        private FirebaseService() 
+        {
+            IsInitialized = true; // Không cần khởi tạo phức tạp nữa
+        }
         
         // =========================================================
         // HARDWARE ID - Định danh duy nhất cho máy tính
         // =========================================================
         
-        /// <summary>
-        /// Lấy Hardware ID duy nhất của máy tính
-        /// Kết hợp: CPU ID + Motherboard Serial + Volume Serial
-        /// </summary>
         public string GetHardwareId()
         {
             try
@@ -75,18 +87,14 @@ namespace auto_chinhdo.Services
                 
                 string combined = $"{cpuId}|{motherboardSerial}|{volumeSerial}";
                 
-                // Tạo hash SHA256 để bảo mật và rút gọn
                 using var sha256 = SHA256.Create();
                 byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(combined));
                 string hwid = Convert.ToBase64String(hashBytes).Substring(0, 32);
                 
-                System.Diagnostics.Debug.WriteLine($"HWID Generated: {hwid}");
                 return hwid;
             }
-            catch (Exception ex)
+            catch
             {
-                System.Diagnostics.Debug.WriteLine($"Error getting HWID: {ex.Message}");
-                // Fallback: Dùng Machine GUID từ Registry
                 return GetMachineGuid();
             }
         }
@@ -125,312 +133,75 @@ namespace auto_chinhdo.Services
             }
         }
         
-        /// <summary>
-        /// Lấy tên máy tính
-        /// </summary>
-        public string GetDeviceName()
-        {
-            return Environment.MachineName;
-        }
+        public string GetDeviceName() => Environment.MachineName;
         
         // =========================================================
-        // FIREBASE INITIALIZATION
+        // FIREBASE AUTH REST API
         // =========================================================
         
         /// <summary>
-        /// Khởi tạo Firebase với file service account key
+        /// Đăng nhập với Firebase Auth REST API hoặc Firestore
         /// </summary>
-        public async Task<bool> InitializeAsync()
+        public async Task<(bool success, string message)> LoginAsync(string emailOrUsername, string password)
         {
             try
             {
-                string keyPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "firebase-admin-key.json");
+                bool isEmail = emailOrUsername.Contains("@");
+                System.Diagnostics.Debug.WriteLine($"[Login] Input: {emailOrUsername}, IsEmail: {isEmail}");
                 
-                if (!File.Exists(keyPath))
+                string? userId = null;
+                
+                if (isEmail)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Firebase key file not found: {keyPath}");
-                    IsInitialized = false;
-                    return false;
-                }
-                
-                // Thiết lập environment variable cho Google Cloud
-                Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", keyPath);
-                
-                // Khởi tạo Firebase Admin SDK
-                if (FirebaseApp.DefaultInstance == null)
-                {
-                    _app = FirebaseApp.Create(new AppOptions
+                    // Thử Firebase Auth trước
+                    var authResult = await AuthenticateWithFirebaseAuthAsync(emailOrUsername, password);
+                    
+                    if (authResult.success)
                     {
-                        Credential = GoogleCredential.FromFile(keyPath)
-                    });
+                        userId = authResult.userId;
+                        _idToken = authResult.idToken;
+                        _tokenExpiry = DateTime.Now.AddHours(1);
+                        System.Diagnostics.Debug.WriteLine($"[Firebase Auth] Success. UID: {userId}");
+                    }
+                    else
+                    {
+                        // Fallback: Thử Firestore
+                        System.Diagnostics.Debug.WriteLine("[Firebase Auth] Failed, trying Firestore...");
+                        var firestoreResult = await AuthenticateWithFirestoreAsync(emailOrUsername, password);
+                        
+                        if (!firestoreResult.success)
+                        {
+                            return (false, firestoreResult.message);
+                        }
+                        userId = firestoreResult.userId;
+                    }
                 }
                 else
                 {
-                    _app = FirebaseApp.DefaultInstance;
-                }
-                
-                // Khởi tạo Firestore với credential builder
-                var firestoreBuilder = new FirestoreDbBuilder
-                {
-                    ProjectId = "autoldplayer-license",
-                    CredentialsPath = keyPath
-                };
-                _db = await firestoreBuilder.BuildAsync();
-                
-                IsInitialized = true;
-                System.Diagnostics.Debug.WriteLine("Firebase initialized successfully!");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Firebase Init Error: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"Stack: {ex.StackTrace}");
-                IsInitialized = false;
-                return false;
-            }
-        }
-        
-        // =========================================================
-        // DEVICE MANAGEMENT - Quản lý thiết bị đăng nhập
-        // =========================================================
-        
-        /// <summary>
-        /// Kiểm tra giới hạn thiết bị và đăng ký nếu còn slot
-        /// </summary>
-        public async Task<(bool allowed, string message)> CheckAndRegisterDeviceAsync()
-        {
-            try
-            {
-                if (_db == null || string.IsNullOrEmpty(CurrentLicenseId))
-                    return (false, "Chưa có thông tin license");
-                
-                string hwid = CurrentHwid;
-                string deviceName = GetDeviceName();
-                
-                // Lấy sub-collection active_devices
-                var devicesRef = _db.Collection("licenses")
-                                    .Document(CurrentLicenseId)
-                                    .Collection("active_devices");
-                
-                // Cleanup: Xóa các device không hoạt động > 7 ngày
-                await CleanupInactiveDevicesAsync(devicesRef);
-                
-                // Đếm số device đang hoạt động
-                var snapshot = await devicesRef.GetSnapshotAsync();
-                int activeCount = snapshot.Count;
-                
-                // Kiểm tra xem device hiện tại đã đăng ký chưa
-                var existingDevice = snapshot.Documents.FirstOrDefault(d => 
-                    d.ContainsField("hwid") && d.GetValue<string>("hwid") == hwid);
-                
-                if (existingDevice != null)
-                {
-                    // Device đã đăng ký → Cập nhật lastSeen
-                    await existingDevice.Reference.UpdateAsync(new Dictionary<string, object>
-                    {
-                        { "lastSeen", Timestamp.FromDateTime(DateTime.UtcNow) },
-                        { "deviceName", deviceName }
-                    });
+                    // Username: Dùng Firestore
+                    var firestoreResult = await AuthenticateWithFirestoreAsync(emailOrUsername, password);
                     
-                    System.Diagnostics.Debug.WriteLine($"Device already registered. Updated lastSeen.");
-                    return (true, "Thiết bị đã được đăng ký");
-                }
-                
-                // Device mới → Kiểm tra còn slot không
-                if (activeCount >= MaxDevices)
-                {
-                    string deviceList = string.Join(", ", snapshot.Documents
-                        .Select(d => d.ContainsField("deviceName") ? d.GetValue<string>("deviceName") : "Unknown"));
-                    
-                    return (false, $"Đã đạt giới hạn {MaxDevices} thiết bị. Các thiết bị đang hoạt động: {deviceList}");
-                }
-                
-                // Còn slot → Đăng ký device mới
-                await devicesRef.AddAsync(new Dictionary<string, object>
-                {
-                    { "hwid", hwid },
-                    { "deviceName", deviceName },
-                    { "loginTime", Timestamp.FromDateTime(DateTime.UtcNow) },
-                    { "lastSeen", Timestamp.FromDateTime(DateTime.UtcNow) }
-                });
-                
-                System.Diagnostics.Debug.WriteLine($"New device registered. Active: {activeCount + 1}/{MaxDevices}");
-                return (true, $"Đăng ký thiết bị thành công ({activeCount + 1}/{MaxDevices})");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"CheckAndRegisterDevice Error: {ex.Message}");
-                return (false, $"Lỗi kiểm tra thiết bị: {ex.Message}");
-            }
-        }
-        
-        /// <summary>
-        /// Gỡ đăng ký thiết bị khi đóng app
-        /// </summary>
-        public async Task UnregisterDeviceAsync()
-        {
-            try
-            {
-                if (_db == null || string.IsNullOrEmpty(CurrentLicenseId))
-                    return;
-                
-                string hwid = CurrentHwid;
-                
-                var devicesRef = _db.Collection("licenses")
-                                    .Document(CurrentLicenseId)
-                                    .Collection("active_devices");
-                
-                var query = devicesRef.WhereEqualTo("hwid", hwid);
-                var snapshot = await query.GetSnapshotAsync();
-                
-                foreach (var doc in snapshot.Documents)
-                {
-                    await doc.Reference.DeleteAsync();
-                    System.Diagnostics.Debug.WriteLine($"Device unregistered: {hwid}");
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"UnregisterDevice Error: {ex.Message}");
-            }
-        }
-        
-        /// <summary>
-        /// Cập nhật lastSeen định kỳ
-        /// </summary>
-        public async Task UpdateLastSeenAsync()
-        {
-            try
-            {
-                if (_db == null || string.IsNullOrEmpty(CurrentLicenseId))
-                    return;
-                
-                string hwid = CurrentHwid;
-                
-                var devicesRef = _db.Collection("licenses")
-                                    .Document(CurrentLicenseId)
-                                    .Collection("active_devices");
-                
-                var query = devicesRef.WhereEqualTo("hwid", hwid);
-                var snapshot = await query.GetSnapshotAsync();
-                
-                foreach (var doc in snapshot.Documents)
-                {
-                    await doc.Reference.UpdateAsync(new Dictionary<string, object>
+                    if (!firestoreResult.success)
                     {
-                        { "lastSeen", Timestamp.FromDateTime(DateTime.UtcNow) }
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"UpdateLastSeen Error: {ex.Message}");
-            }
-        }
-        
-        /// <summary>
-        /// Dọn dẹp các device không hoạt động > 7 ngày
-        /// </summary>
-        private async Task CleanupInactiveDevicesAsync(CollectionReference devicesRef)
-        {
-            try
-            {
-                var cutoffTime = DateTime.UtcNow.AddDays(-DEVICE_INACTIVE_DAYS);
-                var snapshot = await devicesRef.GetSnapshotAsync();
-                
-                foreach (var doc in snapshot.Documents)
-                {
-                    if (doc.ContainsField("lastSeen"))
-                    {
-                        var lastSeen = doc.GetValue<Timestamp>("lastSeen").ToDateTime();
-                        if (lastSeen < cutoffTime)
-                        {
-                            await doc.Reference.DeleteAsync();
-                            System.Diagnostics.Debug.WriteLine($"Cleaned up inactive device: {doc.Id}");
-                        }
+                        return (false, firestoreResult.message);
                     }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"CleanupInactiveDevices Error: {ex.Message}");
-            }
-        }
-        
-        // =========================================================
-        // LOGIN & LICENSE CHECK
-        // =========================================================
-        
-        /// <summary>
-        /// Đăng nhập bằng email và password (lưu trong Firestore)
-        /// </summary>
-        public async Task<(bool success, string message)> LoginAsync(string email, string password)
-        {
-            try
-            {
-                if (!IsInitialized)
-                {
-                    bool initResult = await InitializeAsync();
-                    if (!initResult)
-                    {
-                        return (false, "Không thể kết nối Firebase. Kiểm tra internet và thử lại.");
-                    }
+                    userId = firestoreResult.userId;
                 }
                 
-                // Kiểm tra _db đã được khởi tạo chưa
-                if (_db == null)
-                {
-                    return (false, "Database chưa được khởi tạo. Thử lại sau.");
-                }
-                
-                System.Diagnostics.Debug.WriteLine($"Searching for email: {email}");
-                
-                // Tìm user theo email
-                var usersRef = _db.Collection("user");
-                var query = usersRef.WhereEqualTo("email", email);
-                var snapshot = await query.GetSnapshotAsync();
-                
-                System.Diagnostics.Debug.WriteLine($"Found {snapshot.Count} users with email: {email}");
-                
-                if (snapshot.Count == 0)
-                {
-                    return (false, $"Email/UserID '{email}' không tồn tại.");
-                }
-                
-                var userDoc = snapshot.Documents[0];
-                
-                // Kiểm tra password
-                string? storedPassword = userDoc.ContainsField("password") 
-                    ? userDoc.GetValue<string>("password") 
-                    : null;
-                
-                if (string.IsNullOrEmpty(storedPassword))
-                {
-                    return (false, "Tài khoản chưa thiết lập mật khẩu.");
-                }
-                
-                if (storedPassword != password)
-                {
-                    return (false, "Mật khẩu không đúng");
-                }
-                
-                CurrentUserId = userDoc.Id;
-                CurrentUserEmail = email;
+                CurrentUserEmail = emailOrUsername;
+                CurrentUserId = userId;
                 
                 // Kiểm tra license
                 bool licenseValid = await CheckLicenseAsync();
-                
                 if (!licenseValid)
                 {
                     return (false, "License đã hết hạn hoặc không có license");
                 }
                 
-                // KIỂM TRA GIỚI HẠN THIẾT BỊ (maxDevices)
+                // Kiểm tra giới hạn thiết bị
                 var (deviceAllowed, deviceMessage) = await CheckAndRegisterDeviceAsync();
-                
                 if (!deviceAllowed)
                 {
-                    // Reset thông tin user vì không cho phép đăng nhập
                     CurrentUserId = null;
                     CurrentUserEmail = null;
                     CurrentLicenseId = null;
@@ -441,30 +212,207 @@ namespace auto_chinhdo.Services
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[Login] Error: {ex.Message}");
                 return (false, $"Lỗi đăng nhập: {ex.Message}");
             }
         }
         
         /// <summary>
-        /// Kiểm tra license của user hiện tại
+        /// Xác thực với Firebase Auth REST API
         /// </summary>
+        private async Task<(bool success, string message, string? userId, string? idToken)> AuthenticateWithFirebaseAuthAsync(string email, string password)
+        {
+            try
+            {
+                var requestUrl = $"{AUTH_URL}?key={FIREBASE_API_KEY}";
+                var requestBody = new { email, password, returnSecureToken = true };
+                var jsonContent = JsonSerializer.Serialize(requestBody);
+                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+                
+                var response = await _httpClient.PostAsync(requestUrl, content);
+                var responseBody = await response.Content.ReadAsStringAsync();
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    using var doc = JsonDocument.Parse(responseBody);
+                    var root = doc.RootElement;
+                    string localId = root.GetProperty("localId").GetString() ?? "";
+                    string idToken = root.GetProperty("idToken").GetString() ?? "";
+                    return (true, "OK", localId, idToken);
+                }
+                else
+                {
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(responseBody);
+                        var error = doc.RootElement.GetProperty("error");
+                        var errorMessage = error.GetProperty("message").GetString() ?? "Unknown error";
+                        
+                        string userMessage = errorMessage switch
+                        {
+                            "EMAIL_NOT_FOUND" => "Email không tồn tại.",
+                            "INVALID_PASSWORD" => "Mật khẩu không đúng.",
+                            "INVALID_EMAIL" => "Email không hợp lệ.",
+                            "USER_DISABLED" => "Tài khoản đã bị vô hiệu hóa.",
+                            "TOO_MANY_ATTEMPTS_TRY_LATER" => "Quá nhiều lần thử. Thử lại sau.",
+                            "INVALID_LOGIN_CREDENTIALS" => "Email hoặc mật khẩu không đúng.",
+                            _ => $"Lỗi: {errorMessage}"
+                        };
+                        return (false, userMessage, null, null);
+                    }
+                    catch
+                    {
+                        return (false, $"Lỗi kết nối: {response.StatusCode}", null, null);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return (false, $"Lỗi mạng: {ex.Message}", null, null);
+            }
+        }
+        
+        /// <summary>
+        /// Xác thực với Firestore REST API (cho username không có @)
+        /// </summary>
+        private async Task<(bool success, string message, string? userId)> AuthenticateWithFirestoreAsync(string username, string password)
+        {
+            try
+            {
+                // Query Firestore REST API: GET documents where email == username
+                var baseUrl = string.Format(FIRESTORE_BASE_URL, FIREBASE_PROJECT_ID);
+                var queryUrl = $"{baseUrl}:runQuery?key={FIREBASE_API_KEY}";
+                
+                var query = new
+                {
+                    structuredQuery = new
+                    {
+                        from = new[] { new { collectionId = "user" } },
+                        where = new
+                        {
+                            fieldFilter = new
+                            {
+                                field = new { fieldPath = "email" },
+                                op = "EQUAL",
+                                value = new { stringValue = username }
+                            }
+                        },
+                        limit = 1
+                    }
+                };
+                
+                var jsonContent = JsonSerializer.Serialize(query);
+                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+                
+                var response = await _httpClient.PostAsync(queryUrl, content);
+                var responseBody = await response.Content.ReadAsStringAsync();
+                
+                System.Diagnostics.Debug.WriteLine($"[Firestore Query] Status: {response.StatusCode}");
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    return (false, $"Lỗi truy vấn database: {response.StatusCode}", null);
+                }
+                
+                using var doc = JsonDocument.Parse(responseBody);
+                var results = doc.RootElement.EnumerateArray().ToList();
+                
+                if (results.Count == 0 || !results[0].TryGetProperty("document", out var docElement))
+                {
+                    return (false, $"Tài khoản '{username}' không tồn tại.", null);
+                }
+                
+                // Lấy document name để extract ID
+                var docName = docElement.GetProperty("name").GetString() ?? "";
+                var docId = docName.Split('/').Last();
+                
+                // Lấy password từ fields
+                var fields = docElement.GetProperty("fields");
+                if (!fields.TryGetProperty("password", out var passwordField))
+                {
+                    return (false, "Tài khoản chưa thiết lập mật khẩu.", null);
+                }
+                
+                var storedPassword = passwordField.GetProperty("stringValue").GetString() ?? "";
+                
+                if (storedPassword != password)
+                {
+                    return (false, "Mật khẩu không đúng.", null);
+                }
+                
+                return (true, "OK", docId);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Firestore Auth] Error: {ex.Message}");
+                return (false, $"Lỗi xác thực: {ex.Message}", null);
+            }
+        }
+        
+        // =========================================================
+        // LICENSE CHECK - Firestore REST API
+        // =========================================================
+        
         public async Task<bool> CheckLicenseAsync()
         {
             try
             {
-                // Query theo email vì license lưu userId = email
-                if (string.IsNullOrEmpty(CurrentUserEmail) || _db == null)
+                if (string.IsNullOrEmpty(CurrentUserEmail))
+                    return false;
+                
+                var baseUrl = string.Format(FIRESTORE_BASE_URL, FIREBASE_PROJECT_ID);
+                var queryUrl = $"{baseUrl}:runQuery?key={FIREBASE_API_KEY}";
+                
+                // Query: licenses where userId == CurrentUserEmail AND isActive == true
+                var query = new
                 {
+                    structuredQuery = new
+                    {
+                        from = new[] { new { collectionId = "licenses" } },
+                        where = new
+                        {
+                            compositeFilter = new
+                            {
+                                op = "AND",
+                                filters = new object[]
+                                {
+                                    new {
+                                        fieldFilter = new {
+                                            field = new { fieldPath = "userId" },
+                                            op = "EQUAL",
+                                            value = new { stringValue = CurrentUserEmail }
+                                        }
+                                    },
+                                    new {
+                                        fieldFilter = new {
+                                            field = new { fieldPath = "isActive" },
+                                            op = "EQUAL",
+                                            value = new { booleanValue = true }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        limit = 1
+                    }
+                };
+                
+                var jsonContent = JsonSerializer.Serialize(query);
+                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+                
+                var response = await _httpClient.PostAsync(queryUrl, content);
+                var responseBody = await response.Content.ReadAsStringAsync();
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[License Check] Error: {response.StatusCode}");
                     return false;
                 }
                 
-                var licensesRef = _db.Collection("licenses");
-                // Query theo email hoặc userId (hỗ trợ cả 2 cách)
-                var query = licensesRef.WhereEqualTo("userId", CurrentUserEmail)
-                                       .WhereEqualTo("isActive", true);
-                var snapshot = await query.GetSnapshotAsync();
+                using var doc = JsonDocument.Parse(responseBody);
+                var results = doc.RootElement.EnumerateArray().ToList();
                 
-                if (snapshot.Count == 0)
+                if (results.Count == 0 || !results[0].TryGetProperty("document", out var docElement))
                 {
                     LicenseEndDate = null;
                     CurrentLicenseId = null;
@@ -472,34 +420,234 @@ namespace auto_chinhdo.Services
                     return false;
                 }
                 
-                var licenseDoc = snapshot.Documents[0];
+                // Extract license info
+                var docName = docElement.GetProperty("name").GetString() ?? "";
+                CurrentLicenseId = docName.Split('/').Last();
                 
-                // Lưu License ID để dùng cho device management
-                CurrentLicenseId = licenseDoc.Id;
+                var fields = docElement.GetProperty("fields");
                 
-                // Lấy endDate
-                var endDate = licenseDoc.GetValue<Timestamp>("endDate");
-                LicenseEndDate = endDate.ToDateTime();
+                // Parse endDate
+                if (fields.TryGetProperty("endDate", out var endDateField) &&
+                    endDateField.TryGetProperty("timestampValue", out var timestampValue))
+                {
+                    if (DateTime.TryParse(timestampValue.GetString(), out var endDate))
+                    {
+                        LicenseEndDate = endDate;
+                    }
+                }
                 
-                // Lấy maxDevices
-                MaxDevices = licenseDoc.ContainsField("maxDevices") 
-                    ? licenseDoc.GetValue<int>("maxDevices") 
-                    : 1;
+                // Parse maxDevices
+                if (fields.TryGetProperty("maxDevices", out var maxDevicesField) &&
+                    maxDevicesField.TryGetProperty("integerValue", out var intValue))
+                {
+                    MaxDevices = int.Parse(intValue.GetString() ?? "1");
+                }
                 
-                System.Diagnostics.Debug.WriteLine($"License found: ID={CurrentLicenseId}, MaxDevices={MaxDevices}, EndDate={LicenseEndDate}");
+                System.Diagnostics.Debug.WriteLine($"[License] ID={CurrentLicenseId}, MaxDevices={MaxDevices}, EndDate={LicenseEndDate}");
                 
                 return IsLicenseValid;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Check License Error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[License Check] Error: {ex.Message}");
                 return false;
             }
         }
         
-        /// <summary>
-        /// Đăng xuất
-        /// </summary>
+        // =========================================================
+        // DEVICE MANAGEMENT - Firestore REST API
+        // =========================================================
+        
+        public async Task<(bool allowed, string message)> CheckAndRegisterDeviceAsync()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(CurrentLicenseId))
+                    return (false, "Chưa có thông tin license");
+                
+                string hwid = CurrentHwid;
+                string deviceName = GetDeviceName();
+                
+                var baseUrl = string.Format(FIRESTORE_BASE_URL, FIREBASE_PROJECT_ID);
+                
+                // Get all active devices
+                var devicesUrl = $"{baseUrl}/licenses/{CurrentLicenseId}/active_devices?key={FIREBASE_API_KEY}";
+                var response = await _httpClient.GetAsync(devicesUrl);
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    // Collection might not exist yet - that's OK
+                    System.Diagnostics.Debug.WriteLine($"[Devices] No devices collection yet");
+                }
+                
+                var responseBody = await response.Content.ReadAsStringAsync();
+                var existingDevices = new List<(string docId, string hwid, string deviceName, DateTime lastSeen)>();
+                
+                try
+                {
+                    using var doc = JsonDocument.Parse(responseBody);
+                    if (doc.RootElement.TryGetProperty("documents", out var documents))
+                    {
+                        foreach (var deviceDoc in documents.EnumerateArray())
+                        {
+                            var name = deviceDoc.GetProperty("name").GetString() ?? "";
+                            var docId = name.Split('/').Last();
+                            var fields = deviceDoc.GetProperty("fields");
+                            
+                            string devHwid = "";
+                            string devName = "";
+                            DateTime lastSeen = DateTime.MinValue;
+                            
+                            if (fields.TryGetProperty("hwid", out var hwidField))
+                                devHwid = hwidField.GetProperty("stringValue").GetString() ?? "";
+                            if (fields.TryGetProperty("deviceName", out var nameField))
+                                devName = nameField.GetProperty("stringValue").GetString() ?? "";
+                            if (fields.TryGetProperty("lastSeen", out var lastSeenField) &&
+                                lastSeenField.TryGetProperty("timestampValue", out var tsValue))
+                            {
+                                DateTime.TryParse(tsValue.GetString(), out lastSeen);
+                            }
+                            
+                            existingDevices.Add((docId, devHwid, devName, lastSeen));
+                        }
+                    }
+                }
+                catch { }
+                
+                // Cleanup inactive devices (> 7 days)
+                var cutoffTime = DateTime.UtcNow.AddDays(-DEVICE_INACTIVE_DAYS);
+                foreach (var dev in existingDevices.Where(d => d.lastSeen < cutoffTime))
+                {
+                    await DeleteDeviceAsync(dev.docId);
+                }
+                
+                // Check if current device already registered
+                var existingDevice = existingDevices.FirstOrDefault(d => d.hwid == hwid);
+                
+                if (!string.IsNullOrEmpty(existingDevice.docId))
+                {
+                    // Update lastSeen
+                    await UpdateDeviceLastSeenAsync(existingDevice.docId);
+                    return (true, "Thiết bị đã được đăng ký");
+                }
+                
+                // Check slot availability
+                int activeCount = existingDevices.Count(d => d.lastSeen >= cutoffTime);
+                if (activeCount >= MaxDevices)
+                {
+                    var deviceList = string.Join(", ", existingDevices.Select(d => d.deviceName));
+                    return (false, $"Đã đạt giới hạn {MaxDevices} thiết bị. Thiết bị đang hoạt động: {deviceList}");
+                }
+                
+                // Register new device
+                await RegisterNewDeviceAsync(hwid, deviceName);
+                
+                return (true, $"Đăng ký thiết bị thành công ({activeCount + 1}/{MaxDevices})");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Device Check] Error: {ex.Message}");
+                return (false, $"Lỗi kiểm tra thiết bị: {ex.Message}");
+            }
+        }
+        
+        private async Task RegisterNewDeviceAsync(string hwid, string deviceName)
+        {
+            var baseUrl = string.Format(FIRESTORE_BASE_URL, FIREBASE_PROJECT_ID);
+            var createUrl = $"{baseUrl}/licenses/{CurrentLicenseId}/active_devices?key={FIREBASE_API_KEY}";
+            
+            var deviceData = new
+            {
+                fields = new
+                {
+                    hwid = new { stringValue = hwid },
+                    deviceName = new { stringValue = deviceName },
+                    loginTime = new { timestampValue = DateTime.UtcNow.ToString("o") },
+                    lastSeen = new { timestampValue = DateTime.UtcNow.ToString("o") }
+                }
+            };
+            
+            var jsonContent = JsonSerializer.Serialize(deviceData);
+            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+            
+            await _httpClient.PostAsync(createUrl, content);
+        }
+        
+        private async Task UpdateDeviceLastSeenAsync(string docId)
+        {
+            var baseUrl = string.Format(FIRESTORE_BASE_URL, FIREBASE_PROJECT_ID);
+            var updateUrl = $"{baseUrl}/licenses/{CurrentLicenseId}/active_devices/{docId}?updateMask.fieldPaths=lastSeen&key={FIREBASE_API_KEY}";
+            
+            var updateData = new
+            {
+                fields = new
+                {
+                    lastSeen = new { timestampValue = DateTime.UtcNow.ToString("o") }
+                }
+            };
+            
+            var jsonContent = JsonSerializer.Serialize(updateData);
+            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+            
+            await _httpClient.PatchAsync(updateUrl, content);
+        }
+        
+        private async Task DeleteDeviceAsync(string docId)
+        {
+            var baseUrl = string.Format(FIRESTORE_BASE_URL, FIREBASE_PROJECT_ID);
+            var deleteUrl = $"{baseUrl}/licenses/{CurrentLicenseId}/active_devices/{docId}?key={FIREBASE_API_KEY}";
+            
+            await _httpClient.DeleteAsync(deleteUrl);
+        }
+        
+        public async Task UnregisterDeviceAsync()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(CurrentLicenseId))
+                    return;
+                
+                string hwid = CurrentHwid;
+                var baseUrl = string.Format(FIRESTORE_BASE_URL, FIREBASE_PROJECT_ID);
+                var devicesUrl = $"{baseUrl}/licenses/{CurrentLicenseId}/active_devices?key={FIREBASE_API_KEY}";
+                
+                var response = await _httpClient.GetAsync(devicesUrl);
+                if (!response.IsSuccessStatusCode) return;
+                
+                var responseBody = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(responseBody);
+                
+                if (doc.RootElement.TryGetProperty("documents", out var documents))
+                {
+                    foreach (var deviceDoc in documents.EnumerateArray())
+                    {
+                        var fields = deviceDoc.GetProperty("fields");
+                        if (fields.TryGetProperty("hwid", out var hwidField))
+                        {
+                            var devHwid = hwidField.GetProperty("stringValue").GetString() ?? "";
+                            if (devHwid == hwid)
+                            {
+                                var name = deviceDoc.GetProperty("name").GetString() ?? "";
+                                var docId = name.Split('/').Last();
+                                await DeleteDeviceAsync(docId);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+        
+        public async Task UpdateLastSeenAsync()
+        {
+            // Simplified - already handled in CheckAndRegisterDevice
+        }
+        
+        // =========================================================
+        // OTHER METHODS
+        // =========================================================
+        
         public void Logout()
         {
             CurrentUserId = null;
@@ -507,11 +655,9 @@ namespace auto_chinhdo.Services
             LicenseEndDate = null;
             CurrentLicenseId = null;
             MaxDevices = 1;
+            _idToken = null;
         }
         
-        /// <summary>
-        /// Lấy số ngày còn lại của license
-        /// </summary>
         public int GetRemainingDays()
         {
             if (!LicenseEndDate.HasValue)
@@ -521,44 +667,63 @@ namespace auto_chinhdo.Services
             return Math.Max(0, remaining);
         }
         
-        // =========================================================
-        // APP UPDATE - Kiểm tra cập nhật phần mềm
-        // =========================================================
+        public async Task<bool> InitializeAsync()
+        {
+            // Không cần khởi tạo phức tạp với REST API
+            IsInitialized = true;
+            return true;
+        }
         
-        /// <summary>
-        /// Kiểm tra phiên bản mới nhất từ Firestore (settings/app_config)
-        /// </summary>
         public async Task<AppUpdateConfig?> CheckForUpdateAsync()
         {
             try
             {
-                if (_db == null) await InitializeAsync();
-                if (_db == null) return null;
+                var baseUrl = string.Format(FIRESTORE_BASE_URL, FIREBASE_PROJECT_ID);
+                var docUrl = $"{baseUrl}/settings/app_config?key={FIREBASE_API_KEY}";
                 
-                var docRef = _db.Collection("settings").Document("app_config");
-                var snapshot = await docRef.GetSnapshotAsync();
+                var response = await _httpClient.GetAsync(docUrl);
+                if (!response.IsSuccessStatusCode) return null;
                 
-                if (!snapshot.Exists)
-                {
-                    System.Diagnostics.Debug.WriteLine("Update config not found in Firestore.");
+                var responseBody = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(responseBody);
+                
+                if (!doc.RootElement.TryGetProperty("fields", out var fields))
                     return null;
-                }
                 
                 var config = new AppUpdateConfig
                 {
-                    LatestVersion = snapshot.ContainsField("latestVersion") ? snapshot.GetValue<string>("latestVersion") : "1.0.0",
-                    UpdateUrl = snapshot.ContainsField("updateUrl") ? snapshot.GetValue<string>("updateUrl") : string.Empty,
-                    UpdateNotes = snapshot.ContainsField("updateNotes") ? snapshot.GetValue<string>("updateNotes") : "Không có ghi chú.",
-                    IsCritical = snapshot.ContainsField("isCritical") && snapshot.GetValue<bool>("isCritical")
+                    LatestVersion = GetStringField(fields, "latestVersion") ?? "1.0.0",
+                    UpdateUrl = GetStringField(fields, "updateUrl") ?? "",
+                    UpdateNotes = GetStringField(fields, "updateNotes") ?? "",
+                    IsCritical = GetBoolField(fields, "isCritical")
                 };
                 
                 return config;
             }
-            catch (Exception ex)
+            catch
             {
-                System.Diagnostics.Debug.WriteLine($"CheckForUpdate Error: {ex.Message}");
                 return null;
             }
+        }
+        
+        private string? GetStringField(JsonElement fields, string fieldName)
+        {
+            if (fields.TryGetProperty(fieldName, out var field) &&
+                field.TryGetProperty("stringValue", out var value))
+            {
+                return value.GetString();
+            }
+            return null;
+        }
+        
+        private bool GetBoolField(JsonElement fields, string fieldName)
+        {
+            if (fields.TryGetProperty(fieldName, out var field) &&
+                field.TryGetProperty("booleanValue", out var value))
+            {
+                return value.GetBoolean();
+            }
+            return false;
         }
     }
 }
