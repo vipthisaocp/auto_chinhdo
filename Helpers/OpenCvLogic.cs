@@ -29,9 +29,19 @@ namespace auto_chinhdo.Helpers
         // =========================================================================
         public static (string tpl, CvPoint center, double score)? MatchAny(string screenPath, string[] templates, double threshold)
         {
-            using var imgColor = Cv2.ImRead(screenPath, ImreadModes.Color);
-            if (imgColor.Empty()) return null;
+            return MatchAnyWithROI(screenPath, templates, threshold, null);
+        }
 
+        /// <summary>
+        /// Phiên bản MatchAny hỗ trợ ROI (Region of Interest)
+        /// </summary>
+        public static (string tpl, CvPoint center, double score)? MatchAnyWithROI(string screenPath, string[] templates, double threshold, CvRect? roi = null)
+        {
+            using var imgColorFull = Cv2.ImRead(screenPath, ImreadModes.Color);
+            if (imgColorFull.Empty()) return null;
+
+            using var imgColor = roi.HasValue ? new Mat(imgColorFull, roi.Value) : imgColorFull;
+            
             using var imgGray = new Mat();
             Cv2.CvtColor(imgColor, imgGray, ColorConversionCodes.BGR2GRAY);
 
@@ -91,7 +101,18 @@ namespace auto_chinhdo.Helpers
 
                     if (accepted)
                     {
-                        var c = new CvPoint(currentLoc.X + tplGray.Width / 2, currentLoc.Y + tplGray.Height / 2);
+                        // Tính tọa độ trung tâm (X, Y)
+                        int centerX = currentLoc.X + tplGray.Width / 2;
+                        int centerY = currentLoc.Y + tplGray.Height / 2;
+
+                        // Nếu dùng ROI, phải cộng thêm offset của ROI để ra tọa độ trên ảnh gốc
+                        if (roi.HasValue)
+                        {
+                            centerX += roi.Value.X;
+                            centerY += roi.Value.Y;
+                        }
+
+                        var c = new CvPoint(centerX, centerY);
 
                         if (best == null || (currentScore > best.Value.s))
                         {
@@ -105,6 +126,9 @@ namespace auto_chinhdo.Helpers
                     tplGray?.Dispose();
                 }
             }
+            // Dispose imgColor nếu nó là submat (crop)
+            if (roi.HasValue) imgColor.Dispose();
+            
             return best;
         }
 

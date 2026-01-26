@@ -916,7 +916,7 @@ namespace auto_chinhdo
                             log: AppendLog,
                             captureScreen: async (device) => await CaptureScreenAsync(device),
                             getScreenPath: () => ScreenPathFor(it.Serial),
-                            performTap: (device, x, y) => { _ = PerformTap(device, new CvPoint(x, y)); },
+                            performTap: async (device, x, y) => await PerformTap(device, new CvPoint(x, y)),
                             getThreshold: () => _threshold
                         );
                         _ = Task.Run(() => hybridService.RunPkHuntLoopAsync(it, cts.Token));
@@ -932,7 +932,7 @@ namespace auto_chinhdo
                             log: AppendLog,
                             captureScreen: async (device) => await CaptureScreenAsync(device),
                             getScreenPath: () => ScreenPathFor(it.Serial),
-                            performTap: (device, x, y) => { _ = PerformTap(device, new CvPoint(x, y)); },
+                            performTap: async (device, x, y) => await PerformTap(device, new CvPoint(x, y)),
                             getThreshold: () => _threshold
                         );
                         _ = Task.Run(() => pkService.RunPkHuntLoopAsync(it, cts.Token));

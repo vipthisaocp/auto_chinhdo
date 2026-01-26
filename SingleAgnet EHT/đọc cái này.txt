@@ -1,0 +1,11 @@
+Đọc STARTER.md → Điền about.md
+
+Bắt đầu dự án:
+
+"Tôi muốn làm [mô tả dự án]"
+Sau restart/session mới:
+
+"Đọc context.md và tiếp tục"
+Làm task tiếp theo:
+
+"Tiếp tục"

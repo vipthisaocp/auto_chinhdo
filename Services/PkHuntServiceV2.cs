@@ -6,6 +6,8 @@ using auto_chinhdo.Helpers;
 using auto_chinhdo.Models;
 using AdvancedSharpAdbClient.Models;
 using OpenCvSharp;
+using CvRect = OpenCvSharp.Rect;
+using CvPoint = OpenCvSharp.Point;
 
 namespace auto_chinhdo.Services
 {
@@ -27,10 +29,10 @@ namespace auto_chinhdo.Services
         private const int DEFAULT_NO_ENEMY_TIMEOUT_MS = 5000;
         
         // === Mở rộng ROI lên trên để quét cả tên ===
-        private const int NAME_EXTEND_UP = 25; // Mở rộng lên 25px để bao gồm tên
+        private const int NAME_EXTEND_UP = 12; // CHỈ mở rộng 12px (giảm từ 25px để tránh quét vào text trên màn hình)
         
-        // === Ngưỡng pixel tối thiểu (0.5% của vùng ROI) ===
-        private const int MIN_PIXELS_THRESHOLD = 20;
+        // === Ngưỡng pixel tối thiểu (loại bỏ text nhỏ) ===
+        private const int MIN_PIXELS_THRESHOLD = 50; // TĂNG từ 20 lên 50 để chỉ tin vùng màu LỚN (HP bar/Tên thật)
         
         // === HSV Ranges cho các màu ===
         // Màu ĐỎ (Thanh máu) - 2 dải vì đỏ nằm ở 2 đầu của Hue
@@ -49,9 +51,17 @@ namespace auto_chinhdo.Services
         
         // === Templates ===
         private const string LANCAN = "lancan.png"; // Nút Lân cận để chuyển tab
+        private const string NHIEMVU = "nhiemvu.png"; // Nút/Tab Nhiệm vụ
         private const string THEOSAU = "theosau.png";
+        private const string BOTHEOSAU = "botheosau.png";
         private const string TRIEUTAP = "trieutap_tienden.png";
-        private const double TEMPLATE_THRESHOLD = 0.70;
+        private const double TEMPLATE_THRESHOLD = 0.88; // Tăng lên 0.88 cho các nút UI (Kèo cực chắc)
+        private const double SKILL_THRESHOLD = 0.60;    // Giảm xuống 0.60 cho Skill (Vì skill hay có hiệu ứng/hồi chiêu)
+        private const double FALLBACK_THRESHOLD = 0.75; // Ngưỡng dự phòng cho UI
+        
+        // Vùng ROI cho Tab Navigation (Tách biệt để tăng chính xác - 960x540)
+        private CvRect _roiTabNhiemVu = new CvRect(0, 130, 150, 80);  // Vùng tab Nhiệm vụ phía trên
+        private CvRect _roiNutLanCan = new CvRect(0, 290, 150, 80);    // Vùng nút Lân cận phía dưới
         
         // Skill templates
         private static readonly string[] SKILLS = new[]
@@ -65,10 +75,11 @@ namespace auto_chinhdo.Services
         #region Dependencies
         
         private readonly string _sharedTemplateDir;
+        private readonly string _deviceTemplateDir;
         private readonly Action<string> _log;
         private readonly Func<DeviceItem, Task> _captureScreen;
         private readonly Func<string> _getScreenPath;
-        private readonly Action<DeviceData, int, int> _performTap;
+        private readonly Func<DeviceData, int, int, Task<bool>> _performTap;
         
         // Config values (đọc từ file hoặc dùng default)
         private Rect _vitalSignsROI;
@@ -82,15 +93,16 @@ namespace auto_chinhdo.Services
         
         public PkHuntServiceV2(
             string sharedTemplateDir,
-            string deviceTemplateDir, // Giữ cho tương thích, không dùng
+            string deviceTemplateDir,
             Action<string> log,
             Func<DeviceItem, Task> captureScreen,
             Func<string> getScreenPath,
-            Action<DeviceData, int, int> performTap,
-            Func<double> getThreshold = null // Giữ cho tương thích
+            Func<DeviceData, int, int, Task<bool>> performTap,
+            Func<double> getThreshold = null 
         )
         {
             _sharedTemplateDir = sharedTemplateDir;
+            _deviceTemplateDir = deviceTemplateDir;
             _log = log;
             _captureScreen = captureScreen;
             _getScreenPath = getScreenPath;
@@ -122,7 +134,11 @@ namespace auto_chinhdo.Services
                     _tapY = config.TapY;
                     _noEnemyTimeoutMs = config.NoEnemyTimeoutMs > 0 ? config.NoEnemyTimeoutMs : DEFAULT_NO_ENEMY_TIMEOUT_MS;
                     
-                    _log($"📁 [V2] Đã load config: ROI=({_vitalSignsROI.X},{_vitalSignsROI.Y},{_vitalSignsROI.Width},{_vitalSignsROI.Height}), Tap=({_tapX},{_tapY})");
+                    // Load Nav ROIs (v5.7)
+                    _roiTabNhiemVu = new CvRect(config.NavROI_NhiemVu_X, config.NavROI_NhiemVu_Y, config.NavROI_NhiemVu_W, config.NavROI_NhiemVu_H);
+                    _roiNutLanCan = new CvRect(config.NavROI_LanCan_X, config.NavROI_LanCan_Y, config.NavROI_LanCan_W, config.NavROI_LanCan_H);
+
+                    _log($"📁 [V2] Đã load config: ROI=({_vitalSignsROI.X},{_vitalSignsROI.Y}), Tap=({_tapX},{_tapY}), NavROI_NV={_roiTabNhiemVu.Y}, NavROI_LC={_roiNutLanCan.Y}");
                     return;
                 }
             }
@@ -155,7 +171,7 @@ namespace auto_chinhdo.Services
             var deviceData = (DeviceData)device.Raw;
             
             // KHỚI TẠO: Bấm nút "Lân cận" để đảm bảo đang ở tab người chơi
-            await InitializeTab(device, deviceData, ct);
+            await InitializeTab(device, deviceData, ct, null);
             
             DateTime lastSeenTarget = DateTime.Now;
             int loopCount = 0;
@@ -176,7 +192,15 @@ namespace auto_chinhdo.Services
                         continue;
                     }
                     
-                    // 2. Kiểm tra Vital Signs (mục tiêu còn sống?)
+                    // **KIỂM TRA TAB THÔNG MINH (Dựa trên phản hồi người dùng)**
+                    // Nếu thấy nút "Lân cận" -> Chắc chắn đang ở Tab Nhiệm vụ. Chuyển ngay.
+                    // Kiểm tra ngay đầu mỗi vòng lặp để đảm bảo tính thời gian thực (High Frequency)
+                    if (await InitializeTab(device, deviceData, ct, screenPath))
+                    {
+                        continue; // Đã xử lý chuyển tab thành công, chụp lại màn hình mới ở tab chuẩn
+                    }
+
+                    // 2. Kiểm tra Vital Signs
                     var vitalSigns = IsTargetAlive(screenPath);
                     
                     if (vitalSigns.IsAlive)
@@ -201,6 +225,13 @@ namespace auto_chinhdo.Services
                     
                     if (noTargetDuration.TotalMilliseconds >= _noEnemyTimeoutMs)
                     {
+                        // Kiểm tra xem có đang bị kẹt ở tab Nhiệm vụ không (mỗi 15s)
+                        if (noTargetDuration.TotalSeconds % 15 < 1)
+                        {
+                            _log("🔍 [V2] Không thấy mục tiêu lâu -> Kiểm tra lại Tab...");
+                            await InitializeTab(device, deviceData, ct, null);
+                        }
+
                         _log($"👥 [V2] Không thấy mục tiêu {_noEnemyTimeoutMs / 1000}s → Theo sau...");
                         
                         // Bấm "Theo sau"
@@ -214,7 +245,7 @@ namespace auto_chinhdo.Services
                         var newScreenPath = _getScreenPath();
                         await TrySummon(newScreenPath, deviceData);
                         
-                        // Reset timer
+                        // Reset timer để tránh spam liên tục
                         lastSeenTarget = DateTime.Now;
                     }
                     
@@ -282,7 +313,9 @@ namespace auto_chinhdo.Services
                 bool hasNameTag = (yellowPixels >= MIN_PIXELS_THRESHOLD) || 
                                   (purplePixels >= MIN_PIXELS_THRESHOLD);
                 
-                // Mục tiêu còn sống nếu có HP HOẶC có Tên
+                // Mục tiêu còn sống nếu: CÓ HP (đỏ) HOẶC CÓ TÊN (vàng/tím)
+                // Logic OR để xử lý trường hợp HP < 0.5% (thanh máu đen nhưng chưa chết)
+                // Dùng MIN_PIXELS cao (50) để loại bỏ text nhỏ trên màn hình
                 bool isAlive = hasHealthBar || hasNameTag;
                 
                 return (isAlive, hasHealthBar, hasNameTag);
@@ -302,23 +335,41 @@ namespace auto_chinhdo.Services
         /// </summary>
         private async Task PerformPK(DeviceData device, string screenPath)
         {
-            // 1. Tap vào mục tiêu
-            _performTap(device, _tapX, _tapY);
-            await Task.Delay(100);
-            
-            // 2. Xả skills
-            foreach (var skill in SKILLS)
+            // 1. Click vào mục tiêu (Vùng Portrait/Thanh máu đã phát hiện)
+            // Theo yêu cầu của bạn: Click trực tiếp vào vùng thanh máu để đảm bảo công kích
+            bool tapTarget = await _performTap(device, _tapX, _tapY);
+            if (tapTarget)
             {
-                var skillPath = Path.Combine(_sharedTemplateDir, skill);
+                _log($"⚔️ [V2] Công kích mục tiêu tại ({_tapX},{_tapY}). Bắt đầu xả Skill...");
+            }
+            
+            // 2. Click các kỹ năng
+            await CastSkills(screenPath, device);
+        }
+
+        private async Task CastSkills(string screenPath, DeviceData device)
+        {
+            foreach (var s in SKILLS)
+            {
+                // ƯU TIÊN tìm kỹ năng trong thư mục của THIẾT BỊ (Mỗi nhân vật 1 bộ skill riêng)
+                var skillPath = Path.Combine(_deviceTemplateDir, s);
                 
+                // Nếu không có trong thư mục thiết bị, mới tìm ở Shared (Dự phòng)
+                if (!File.Exists(skillPath))
+                {
+                    skillPath = Path.Combine(_sharedTemplateDir, s);
+                }
+
                 if (!File.Exists(skillPath)) continue;
                 
-                var result = OpenCvLogic.MatchAny(screenPath, new[] { skillPath }, TEMPLATE_THRESHOLD);
+                // Dùng SKILL_THRESHOLD thấp hơn vì nút skill hay có hiệu ứng nhấp nháy/cooldown
+                var result = OpenCvLogic.MatchAny(screenPath, new[] { skillPath }, SKILL_THRESHOLD);
                 
                 if (result.HasValue)
                 {
-                    _performTap(device, result.Value.center.X, result.Value.center.Y);
-                    await Task.Delay(120); // Delay ngắn giữa các skill
+                    await _performTap(device, result.Value.center.X, result.Value.center.Y);
+                    _log($"🔥 [V2] Bấm Skill: {s} (Score: {result.Value.score:F2})");
+                    await Task.Delay(80); // Delay cực ngắn giữa các skill để xả nhanh
                 }
             }
         }
@@ -328,10 +379,23 @@ namespace auto_chinhdo.Services
         #region Navigation Actions
         
         /// <summary>
-        /// Bấm nút "Theo sau"
+        /// Bấm nút "Theo sau" (Chỉ bấm nếu chưa theo sau)
         /// </summary>
         private async Task FollowLeader(string screenPath, DeviceData device)
         {
+            // 1. Kiểm tra xem có đang ở trạng thái "Theo sau" hay không
+            var botheoSauPath = Path.Combine(_sharedTemplateDir, BOTHEOSAU);
+            if (File.Exists(botheoSauPath))
+            {
+                var hitBoTheoSau = OpenCvLogic.MatchAny(screenPath, new[] { botheoSauPath }, TEMPLATE_THRESHOLD);
+                if (hitBoTheoSau.HasValue)
+                {
+                    _log("👥 [V2] Đang ở trạng thái 'Theo sau' (thấy nút Bỏ theo sau). Không bấm lại.");
+                    return;
+                }
+            }
+
+            // 2. Nếu không thấy nút Bỏ theo sau, tiến hành bấm Theo sau
             var templatePath = Path.Combine(_sharedTemplateDir, THEOSAU);
             
             if (!File.Exists(templatePath))
@@ -344,12 +408,12 @@ namespace auto_chinhdo.Services
             
             if (result.HasValue)
             {
-                _performTap(device, result.Value.center.X, result.Value.center.Y);
+                await _performTap(device, result.Value.center.X, result.Value.center.Y);
                 _log($"✅ [V2] Bấm 'Theo sau' tại ({result.Value.center.X},{result.Value.center.Y})");
             }
             else
             {
-                _log("⚠️ [V2] Không tìm thấy nút 'Theo sau'");
+                _log("⚠️ [V2] Không tìm thấy nút 'Theo sau' để bấm.");
             }
         }
         
@@ -366,7 +430,7 @@ namespace auto_chinhdo.Services
             
             if (result.HasValue)
             {
-                _performTap(device, result.Value.center.X, result.Value.center.Y);
+                await _performTap(device, result.Value.center.X, result.Value.center.Y);
                 _log($"✅ [V2] Bấm 'Triệu tập' tại ({result.Value.center.X},{result.Value.center.Y})");
             }
         }
@@ -377,51 +441,67 @@ namespace auto_chinhdo.Services
         #region Initialization
         
         /// <summary>
-        /// Khởi tạo: Bấm nút "Lân cận" để đảm bảo đang ở tab người chơi
+        /// Khởi tạo hoặc Sửa lỗi Tab: Bấm nút "Lân cận" 
+        /// Chấp nhận screenPath có sẵn để tránh chụp lại màn hình
         /// </summary>
-        private async Task InitializeTab(DeviceItem device, DeviceData deviceData, CancellationToken ct)
+        private async Task<bool> InitializeTab(DeviceItem device, DeviceData deviceData, CancellationToken ct, string existingScreenPath = null)
         {
-            _log("🔄 [V2] Khởi tạo: Đang kiểm tra và chuyển sang tab Lân cận...");
-            
             try
             {
-                // Chụp màn hình
-                await _captureScreen(device);
-                var screenPath = _getScreenPath();
-                
-                if (string.IsNullOrEmpty(screenPath) || !File.Exists(screenPath))
+                string screenPath = existingScreenPath;
+                if (string.IsNullOrEmpty(screenPath))
                 {
-                    _log("⚠️ [V2] Không chụp được màn hình để khởi tạo");
-                    return;
+                    await _captureScreen(device);
+                    screenPath = _getScreenPath();
                 }
                 
-                // Tìm và bấm nút "Lân cận"
-                var templatePath = Path.Combine(_sharedTemplateDir, LANCAN);
+                if (string.IsNullOrEmpty(screenPath) || !File.Exists(screenPath)) return false;
                 
-                if (!File.Exists(templatePath))
+                // 2. Thử tìm nút NHIỆM VỤ (Dùng ROI riêng phía trên từ config)
+                var nhiemVuPath = Path.Combine(_sharedTemplateDir, NHIEMVU);
+                if (File.Exists(nhiemVuPath))
                 {
-                    _log($"⚠️ [V2] Không tìm thấy template: {LANCAN}");
-                    return;
+                    var isNhiemVu = OpenCvLogic.MatchAnyWithROI(screenPath, new[] { nhiemVuPath }, 0.85, _roiTabNhiemVu);
+                    if (isNhiemVu.HasValue)
+                    {
+                        _log($"📍 [V2] Xác nhận đang ở tab Nhiệm Vụ tại {isNhiemVu.Value.center}.");
+                    }
+                }
+
+                // 3. Tìm và bấm nút "LÂN CẬN"
+                var lanCanPath = Path.Combine(_sharedTemplateDir, LANCAN);
+                if (!File.Exists(lanCanPath))
+                {
+                    return false;
                 }
                 
-                var result = OpenCvLogic.MatchAny(screenPath, new[] { templatePath }, TEMPLATE_THRESHOLD);
+                // Thử với threshold chuẩn (Dùng ROI riêng phía dưới từ config)
+                var result = OpenCvLogic.MatchAnyWithROI(screenPath, new[] { lanCanPath }, TEMPLATE_THRESHOLD, _roiNutLanCan);
+                
+                // Nếu không thấy, thử với fallback threshold (vẫn trong ROI hẹp)
+                if (!result.HasValue)
+                {
+                    result = OpenCvLogic.MatchAnyWithROI(screenPath, new[] { lanCanPath }, FALLBACK_THRESHOLD, _roiNutLanCan);
+                    if (result.HasValue)
+                    {
+                        _log($"⚠️ [V2] Tìm thấy 'Lân cận' tại {result.Value.center} với score thấp ({result.Value.score:F2}).");
+                    }
+                }
                 
                 if (result.HasValue)
                 {
-                    _performTap(deviceData, result.Value.center.X, result.Value.center.Y);
-                    _log($"✅ [V2] Bấm 'Lân cận' tại ({result.Value.center.X},{result.Value.center.Y})");
-                    
-                    // Chờ tab chuyển xong
-                    await Task.Delay(1000, ct);
+                    await _performTap(deviceData, result.Value.center.X, result.Value.center.Y);
+                    _log($"✅ [V2] Đã bấm 'Lân cận' tại ({result.Value.center.X},{result.Value.center.Y}) - Score: {result.Value.score:F2}");
+                    await Task.Delay(800, ct); // Chờ tab chuyển
+                    return true;
                 }
-                else
-                {
-                    _log("ℹ️ [V2] Không thấy nút 'Lân cận' - có thể đã ở đúng tab");
-                }
+                
+                return false;
             }
             catch (Exception ex)
             {
-                _log($"⚠️ [V2] Lỗi khởi tạo tab: {ex.Message}");
+                _log($"⚠️ [V2] Lỗi InitializeTab: {ex.Message}");
+                return false;
             }
         }
         

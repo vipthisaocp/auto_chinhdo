@@ -19,20 +19,33 @@
     <Resource Remove="AdminPanel\**" />
   </ItemGroup>
 
+  <!-- EXCLUDE SingleAgnet EHT folder - documentation and conflicting source files -->
   <ItemGroup>
-    <Resource Include="app_icon.ico" />
-    <!-- Firebase Admin Key - Copy to output -->
-    <None Include="firebase-admin-key.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <Compile Remove="SingleAgnet EHT\**" />
+    <None Remove="SingleAgnet EHT\**" />
+    <Content Remove="SingleAgnet EHT\**" />
+    <Page Remove="SingleAgnet EHT\**" />
+    <ApplicationDefinition Remove="SingleAgnet EHT\**" />
+    <Resource Remove="SingleAgnet EHT\**" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- GIỮ LẠI: Thư viện ADB chính (AdvancedSharpAdbClient) -->
+    <Resource Include="app_icon.ico" />
+    <!-- Firebase Admin Key - Copy to output -->
+    <None Include="firebase-admin-key.json" Condition="Exists('firebase-admin-key.json')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    
+    <!-- PROTECT TEMPLATES: Cố định asset, không để bị xóa khi build -->
+    <Content Include="templates\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="AdvancedSharpAdbClient" Version="3.4.14" />
     <PackageReference Include="FirebaseAdmin" Version="2.4.0" />
     <PackageReference Include="Google.Cloud.Firestore" Version="4.1.0" />
-    
     <PackageReference Include="OpenCvSharp4" Version="4.11.0.20250507" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.11.0.20250507" />
     <PackageReference Include="Tesseract" Version="5.2.0" />

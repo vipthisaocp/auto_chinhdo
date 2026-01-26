@@ -31,6 +31,17 @@ namespace auto_chinhdo.Models
         // Timeout chuyển sang theo sau (ms)
         public int NoEnemyTimeoutMs { get; set; } = 3000;
 
+        // --- ROI cho Tab Navigation (v5.7) ---
+        public int NavROI_NhiemVu_X { get; set; } = 0;
+        public int NavROI_NhiemVu_Y { get; set; } = 130;
+        public int NavROI_NhiemVu_W { get; set; } = 150;
+        public int NavROI_NhiemVu_H { get; set; } = 80;
+
+        public int NavROI_LanCan_X { get; set; } = 0;
+        public int NavROI_LanCan_Y { get; set; } = 290;
+        public int NavROI_LanCan_W { get; set; } = 150;
+        public int NavROI_LanCan_H { get; set; } = 80;
+
         /// <summary>
         /// Kiểm tra xem cấu hình có hợp lệ không.
         /// </summary>
